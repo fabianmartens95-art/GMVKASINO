@@ -28,12 +28,16 @@ Central game catalog, persistent player display name, routing, deterministic RNG
 - Durable session repository adapter with atomic JSON-file persistence
 - Demo sessions and balances survive server restarts
 - 256-bit random demo session tokens
+- Explicit session rotation and invalidation endpoints
+- Separate idle and absolute session expiry limits
+- Browser bearer tokens stored in `sessionStorage`, with one-time migration away from legacy `localStorage`
+- Automatic client recovery from an expired/invalid session on safe retry paths
 - Versioned `/api/v1` contract
 - Temporary legacy `/api/*` compatibility aliases
 - `X-Request-Id` tracing on HTTP responses
 - Structured HTTP request logs without session-token logging
-- Persistence restart/expiry tests
-- API v1 request-tracing tests
+- Audit events use non-reversible session fingerprints rather than raw bearer tokens
+- Persistence, expiry, lifecycle and API request-tracing tests
 
 The JSON repository is intentionally transitional. It establishes a storage abstraction without introducing a native database dependency yet. A later milestone can replace it with SQLite/Postgres while keeping the casino service contract stable.
 
@@ -82,9 +86,13 @@ Preferred M4 endpoints:
 - `GET /api/v1/games`
 - `POST /api/v1/session`
 - `GET /api/v1/session`
+- `POST /api/v1/session/rotate`
+- `DELETE /api/v1/session`
 - `POST /api/v1/spin`
 
 Every HTTP response receives an `X-Request-Id`. The frontend uses `/api/v1`; the prior unversioned routes remain temporary aliases.
+
+`POST /api/v1/session/rotate` preserves the current demo-session state while replacing the bearer token and invalidating the previous token. `DELETE /api/v1/session` invalidates the current token and removes the durable demo session.
 
 ## Environment
 
@@ -93,12 +101,15 @@ The server reads environment variables directly. `.env.example` documents the av
 - `HOST`
 - `PORT`
 - `DEMO_STARTING_BALANCE`
-- `DEMO_SESSION_TTL_MS`
+- `DEMO_SESSION_IDLE_TTL_MS`
+- `DEMO_SESSION_ABSOLUTE_TTL_MS`
 - `DEMO_SESSION_STORE_PATH`
 - `SPIN_RATE_LIMIT_WINDOW_MS`
 - `SPIN_RATE_LIMIT_MAX`
 - `MAX_JSON_BODY_BYTES`
 - `AUDIT_MAX_EVENTS`
+
+The default idle TTL is 24 hours. Valid activity refreshes the idle timer. The default absolute TTL is seven days and is never extended by activity or token rotation. The legacy `DEMO_SESSION_TTL_MS` variable is still accepted as an idle-TTL fallback for compatibility.
 
 Local durable demo state defaults to `.data/demo-sessions.json` and is gitignored.
 
@@ -126,6 +137,7 @@ src/
 
 tests/
 ├── casinoApi.test.js
+├── clientSessionApi.test.js
 ├── httpServer.test.js
 ├── sessionPersistence.test.js
 └── slotEngine.test.js
@@ -135,8 +147,10 @@ tests/
 
 The browser cannot settle spins or credit itself. It submits a game ID and allowed bet; the server validates the demo session, balance, game configuration and rate limit, resolves the spin, persists the resulting demo balance, records audit data and returns the authoritative result.
 
+A demo session identifier is a **bearer secret**: possession of the token is sufficient to act as that demo session. It must not be placed in URLs, general request logs, analytics events, screenshots or source control. The browser stores it in `sessionStorage` rather than durable `localStorage`; a legacy local-storage token is migrated once and removed. Server audit records use a short SHA-256-derived session fingerprint for correlation instead of logging the token itself.
+
 This is still not a real-money architecture. Before any monetary functionality, the project would require a separate legal/compliance decision and production-grade identity, database/ledger design, certified game/RNG requirements where applicable, geofencing, AML/KYC, responsible-gambling controls, monitoring, secrets management and infrastructure hardening.
 
 ## Next milestone
 
-M5 should introduce a real database adapter behind the existing repository boundary, stronger authentication/session lifecycle controls, deployment/container configuration, health/readiness separation, metrics, and operational recovery procedures. Real-money functionality remains out of scope.
+M5 should introduce a real database adapter behind the existing repository boundary, production authentication/identity, deployment/container configuration, health/readiness separation, metrics, secrets management and operational recovery procedures. Real-money functionality remains out of scope.
