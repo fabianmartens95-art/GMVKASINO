@@ -4,7 +4,7 @@ This document applies only to the non-monetary GMVKASINO demo. It does not make 
 
 ## Deployment contract
 
-The current M5 deployment expects:
+The current deployment expects:
 
 - repository-root `Dockerfile`
 - Node.js 22 runtime
@@ -16,6 +16,7 @@ The current M5 deployment expects:
 - JSON persistence only as a single-instance fallback
 - versioned PostgreSQL schema migrations under `server/migrations/`
 - backup/recovery procedures in [`DATABASE_RECOVERY.md`](DATABASE_RECOVERY.md)
+- staging/promotion rules in [`STAGING.md`](STAGING.md)
 
 ## Pre-deploy gate
 
@@ -31,6 +32,25 @@ docker build -t gmvkasino:local .
 CI runs the same core gates and additionally executes PostgreSQL integration tests against an ephemeral PostgreSQL service.
 
 Before a destructive, incompatible or data-transforming migration, the pre-migration backup checklist in `DATABASE_RECOVERY.md` is an additional mandatory gate.
+
+## Staging and promotion gate
+
+A revision is not eligible for primary hosted-demo promotion solely because normal CI is green. The target revision must also pass the manual `Staging Verification` workflow against an isolated staging deployment.
+
+Required release sequence:
+
+1. normal CI passes for the exact revision,
+2. pending migrations are validated,
+3. staging uses separate persistence from the primary demo,
+4. `.github/workflows/staging-verify.yml` passes for the exact revision,
+5. backup/recovery requirements for the change are satisfied,
+6. promotion is performed as an explicit deployment decision,
+7. liveness, readiness and remote smoke are re-verified on the primary deployment,
+8. roll back to the previous known-good application revision on material regression.
+
+The staging workflow never deploys or promotes automatically. Environment-specific URLs are supplied through the GitHub Environment named `staging`; source control must not contain staging or primary credentials.
+
+The complete setup, verification evidence, promotion criteria and rollback triggers are documented in [`STAGING.md`](STAGING.md).
 
 ## PostgreSQL deployment
 
