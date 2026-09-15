@@ -8,6 +8,7 @@
     "dev:server": "node server/index.js",
     "build": "vite build",
     "test": "node --test",
+    "db:migrate": "node scripts/migrate.mjs",
     "start": "node server/index.js",
     "smoke": "node scripts/smoke.mjs",
     "preview": "vite preview"
