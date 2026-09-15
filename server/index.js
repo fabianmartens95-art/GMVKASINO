@@ -1,5 +1,6 @@
 import { SERVER_CONFIG } from './config.js'
 import { SessionStore } from './sessionStore.js'
+import { JsonSessionPersistence } from './jsonSessionPersistence.js'
 import { SlidingWindowRateLimiter } from './rateLimiter.js'
 import { AuditLog } from './auditLog.js'
 import { CasinoService } from './casinoService.js'
@@ -10,6 +11,7 @@ export function createDefaultService(config = SERVER_CONFIG) {
     sessionStore: new SessionStore({
       startingBalance: config.startingBalance,
       ttlMs: config.sessionTtlMs,
+      persistence: new JsonSessionPersistence({ filePath: config.sessionStorePath }),
     }),
     rateLimiter: new SlidingWindowRateLimiter({
       limit: config.rateLimitMaxSpins,
@@ -24,7 +26,7 @@ export function startServer(config = SERVER_CONFIG) {
   const server = createHttpServer({ service, config })
 
   server.listen(config.port, config.host, () => {
-    console.log(`GMVKASINO M3 server listening on http://${config.host}:${config.port}`)
+    console.log(`GMVKASINO M4 server listening on http://${config.host}:${config.port}`)
   })
 
   const shutdown = () => server.close(() => process.exit(0))
