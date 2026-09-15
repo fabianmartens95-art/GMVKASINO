@@ -148,7 +148,17 @@ export function createHttpServer({ service, config, staticDir = DEFAULT_STATIC_D
 
     try {
       if (apiPath === '/health' && req.method === 'GET') {
-        sendJson(res, 200, { ok: true, mode: 'demo', milestone: 'M4', apiVersion: 'v1', requestId })
+        sendJson(res, 200, { ok: true, mode: 'demo', milestone: 'M5', apiVersion: 'v1', requestId })
+        return
+      }
+
+      if (apiPath === '/ready' && req.method === 'GET') {
+        try {
+          const ready = await service.ready()
+          sendJson(res, ready ? 200 : 503, { ok: ready, requestId })
+        } catch {
+          sendJson(res, 503, { ok: false, requestId })
+        }
         return
       }
 
@@ -159,7 +169,7 @@ export function createHttpServer({ service, config, staticDir = DEFAULT_STATIC_D
 
       if (apiPath === '/session' && req.method === 'POST') {
         const body = await readJson(req, config.maxBodyBytes)
-        const session = service.openSession({
+        const session = await service.openSession({
           sessionId: sessionIdFrom(req),
           player: body.player,
         })
@@ -168,14 +178,14 @@ export function createHttpServer({ service, config, staticDir = DEFAULT_STATIC_D
       }
 
       if (apiPath === '/session' && req.method === 'GET') {
-        const session = service.getSession(sessionIdFrom(req))
+        const session = await service.getSession(sessionIdFrom(req))
         sendJson(res, 200, { session, requestId })
         return
       }
 
       if (apiPath === '/spin' && req.method === 'POST') {
         const body = await readJson(req, config.maxBodyBytes)
-        const result = service.spin({
+        const result = await service.spin({
           sessionId: sessionIdFrom(req),
           gameId: body.gameId,
           bet: body.bet,
