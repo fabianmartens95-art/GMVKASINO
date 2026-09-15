@@ -15,6 +15,7 @@ The current M5 deployment expects:
 - PostgreSQL as the preferred persistent store when `DATABASE_URL` is configured
 - JSON persistence only as a single-instance fallback
 - versioned PostgreSQL schema migrations under `server/migrations/`
+- backup/recovery procedures in [`DATABASE_RECOVERY.md`](DATABASE_RECOVERY.md)
 
 ## Pre-deploy gate
 
@@ -28,6 +29,8 @@ docker build -t gmvkasino:local .
 ```
 
 CI runs the same core gates and additionally executes PostgreSQL integration tests against an ephemeral PostgreSQL service.
+
+Before a destructive, incompatible or data-transforming migration, the pre-migration backup checklist in `DATABASE_RECOVERY.md` is an additional mandatory gate.
 
 ## PostgreSQL deployment
 
@@ -54,7 +57,7 @@ DATABASE_URL=<postgres connection string> npm run db:migrate
 
 The application startup path also invokes the same migration runner before serving traffic, so migrations remain idempotent across repeated starts. Applied migration names are recorded in `schema_migrations`, and migration execution is protected by a PostgreSQL advisory lock.
 
-Migration authoring, compatibility and rollback rules are documented in [`DATABASE_MIGRATIONS.md`](DATABASE_MIGRATIONS.md).
+Migration authoring, compatibility and rollback rules are documented in [`DATABASE_MIGRATIONS.md`](DATABASE_MIGRATIONS.md). Backup ownership, retention, restore drills and incident recovery are documented in [`DATABASE_RECOVERY.md`](DATABASE_RECOVERY.md).
 
 ## JSON fallback
 
@@ -92,7 +95,7 @@ The smoke check requires liveness, persistence readiness and the built frontend 
 
 If a deployment fails liveness, readiness, tests or the remote smoke check, do not promote it. Roll back to the most recent known-good image/revision, verify `/api/v1/health/live` and `/api/v1/health/ready`, then rerun the remote smoke check.
 
-Application rollback does not automatically roll back PostgreSQL data. Do not delete `schema_migrations` rows or reverse migration SQL ad hoc. Prefer additive/backward-compatible migrations; follow the database recovery runbook for any future incompatible change.
+Application rollback does not automatically roll back PostgreSQL data. Do not delete `schema_migrations` rows or reverse migration SQL ad hoc. Prefer additive/backward-compatible migrations; follow [`DATABASE_RECOVERY.md`](DATABASE_RECOVERY.md) for restore/cutover procedures and any future incompatible change.
 
 ## Secrets
 
