@@ -295,17 +295,40 @@ export function createHttpServer({
         }
         consumeAuthRateLimit(req, authRateLimiter)
         const body = await readJson(req, config.maxBodyBytes)
-        const authResult = apiPath === '/auth/register'
-          ? await authService.register(body)
-          : await authService.login(body)
-        const session = await service.openSession({ accountId: authResult.account.id })
-        const event = apiPath === '/auth/register' ? 'auth.registered' : 'auth.logged_in'
+        let authResult
+        let session
+
+        if (apiPath === '/auth/register') {
+          const guestSessionId = sessionIdFrom(req)
+          if (guestSessionId) {
+            const guestSession = await service.getSession(guestSessionId)
+            authResult = await authService.upgradeGuest({
+              accountId: guestSession.accountId,
+              sessionId: guestSession.id,
+              ...body,
+            })
+            session = await service.getSession(guestSession.id, { accountId: authResult.account.id })
+          } else {
+            authResult = await authService.register(body)
+            session = await service.openSession({ accountId: authResult.account.id })
+          }
+        } else {
+          authResult = await authService.login(body)
+          session = await service.openSession({ accountId: authResult.account.id })
+        }
+
+        const event = authResult.upgraded
+          ? 'auth.guest_upgraded'
+          : apiPath === '/auth/register'
+            ? 'auth.registered'
+            : 'auth.logged_in'
         metrics?.incrementEvent?.(event)
         sendJson(res, apiPath === '/auth/register' ? 201 : 200, {
           account: authResult.account,
           wallet: authResult.wallet,
           auth: authResult.auth,
           session,
+          upgraded: Boolean(authResult.upgraded),
           requestId,
         })
         return

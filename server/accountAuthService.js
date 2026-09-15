@@ -164,6 +164,98 @@ export class AccountAuthService {
     }
   }
 
+  async upgradeGuest({ accountId, sessionId, email, password, displayName } = {}) {
+    if (!accountId || !sessionId) {
+      throw new AccountAuthError(409, 'GUEST_UPGRADE_UNAVAILABLE', 'Guest session cannot be upgraded')
+    }
+
+    const normalizedEmail = normalizeEmail(email)
+    const validPassword = validatePassword(password)
+    const salt = randomBytes(PASSWORD_SALT_BYTES)
+    const passwordHash = await derivePassword(validPassword, salt)
+    const hasDisplayName = typeof displayName === 'string' && displayName.trim().length > 0
+    const cleanedDisplayName = cleanDisplayName(displayName)
+    const client = await this.pool.connect()
+
+    try {
+      await client.query('BEGIN')
+      const existing = await client.query(
+        `SELECT id, email, display_name, status, created_at, updated_at,
+                password_scheme, password_salt, password_hash
+         FROM accounts
+         WHERE id = $1
+         FOR UPDATE`,
+        [accountId],
+      )
+      const row = existing.rows[0]
+      if (!row) {
+        throw new AccountAuthError(409, 'GUEST_UPGRADE_UNAVAILABLE', 'Guest account cannot be upgraded')
+      }
+      if (row.status !== 'active') {
+        throw new AccountAuthError(403, 'ACCOUNT_DISABLED', 'Account is disabled')
+      }
+      if (row.email || row.password_scheme || row.password_salt || row.password_hash) {
+        throw new AccountAuthError(409, 'ACCOUNT_ALREADY_REGISTERED', 'Account already has credentials')
+      }
+
+      const protectedSession = await client.query(
+        `UPDATE demo_sessions
+         SET auth_required = TRUE,
+             player = CASE WHEN $3::boolean THEN $4 ELSE player END
+         WHERE id = $1
+           AND account_id = $2
+           AND auth_required = FALSE
+         RETURNING id`,
+        [sessionId, accountId, hasDisplayName, cleanedDisplayName],
+      )
+      if (!protectedSession.rows[0]) {
+        throw new AccountAuthError(409, 'GUEST_UPGRADE_UNAVAILABLE', 'Guest session cannot be upgraded')
+      }
+
+      const timestamp = this.now()
+      const accountResult = await client.query(
+        `UPDATE accounts
+         SET email = $2,
+             display_name = CASE WHEN $7::boolean THEN $8 ELSE display_name END,
+             password_scheme = $3,
+             password_salt = $4,
+             password_hash = $5,
+             updated_at = $6
+         WHERE id = $1
+         RETURNING id, email, display_name, status, created_at, updated_at`,
+        [
+          accountId,
+          normalizedEmail,
+          PASSWORD_SCHEME,
+          salt,
+          passwordHash,
+          timestamp,
+          hasDisplayName,
+          cleanedDisplayName,
+        ],
+      )
+      const wallet = await this.ledger.getWallet(client, accountId)
+      if (!wallet) throw new Error('Guest account is missing its DEMO wallet')
+      const auth = await this.createAuthSession(client, accountId)
+      await client.query('COMMIT')
+
+      return {
+        account: accountSnapshot(accountResult.rows[0]),
+        wallet,
+        auth,
+        upgraded: true,
+      }
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => {})
+      if (error?.code === '23505') {
+        throw new AccountAuthError(409, 'EMAIL_ALREADY_REGISTERED', 'An account with this email already exists')
+      }
+      throw error
+    } finally {
+      client.release()
+    }
+  }
+
   async login({ email, password } = {}) {
     const normalizedEmail = normalizeEmail(email)
     const validPassword = validatePassword(password)
