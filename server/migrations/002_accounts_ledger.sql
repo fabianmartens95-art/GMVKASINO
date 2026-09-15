@@ -26,7 +26,8 @@ CREATE TABLE IF NOT EXISTS ledger_accounts (
   allow_negative BOOLEAN NOT NULL DEFAULT FALSE,
   balance_atomic NUMERIC(78,0) NOT NULL DEFAULT 0,
   created_at BIGINT NOT NULL,
-  CHECK ((account_id IS NOT NULL) <> (system_key IS NOT NULL))
+  CHECK ((account_id IS NOT NULL) <> (system_key IS NOT NULL)),
+  CHECK (allow_negative OR balance_atomic >= 0)
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS ledger_accounts_user_unique_idx
