@@ -16,12 +16,14 @@ export class SessionStore {
     absoluteTtlMs = 604_800_000,
     now = Date.now,
     persistence = null,
+    metrics = null,
   } = {}) {
     this.startingBalance = startingBalance
     this.idleTtlMs = idleTtlMs
     this.absoluteTtlMs = absoluteTtlMs
     this.now = now
     this.persistence = persistence
+    this.metrics = metrics
     this.sessions = new Map()
 
     for (const session of this.persistence?.load?.() || []) {
@@ -119,6 +121,7 @@ export class SessionStore {
     if (this.isExpired(session)) {
       this.sessions.delete(sessionId)
       this.persist()
+      this.metrics?.incrementEvent?.('session.expired')
       return null
     }
 
@@ -126,14 +129,17 @@ export class SessionStore {
   }
 
   pruneExpired() {
-    let changed = false
+    let expired = 0
     for (const [sessionId, session] of this.sessions.entries()) {
       if (this.isExpired(session)) {
         this.sessions.delete(sessionId)
-        changed = true
+        expired += 1
       }
     }
-    if (changed) this.persist()
+    if (expired > 0) {
+      this.persist()
+      this.metrics?.incrementEvent?.('session.expired', expired)
+    }
   }
 
   isExpired(session) {
