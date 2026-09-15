@@ -25,6 +25,18 @@ export class CasinoService {
     this.rng = rng
   }
 
+  async checkReadiness() {
+    if (typeof this.sessionStore.checkReadiness === 'function') {
+      return this.sessionStore.checkReadiness()
+    }
+    if (typeof this.sessionStore.ready === 'function') {
+      const ready = await this.sessionStore.ready()
+      if (!ready) throw new Error('Session store is not ready')
+      return { ok: true, backend: 'unknown' }
+    }
+    return { ok: true, backend: 'memory' }
+  }
+
   getGames() {
     return GAMES.map((game) => ({
       ...game,
@@ -133,8 +145,8 @@ export class CasinoService {
   }
 
   async ready() {
-    if (typeof this.sessionStore.ready !== 'function') return true
-    return Boolean(await this.sessionStore.ready())
+    await this.checkReadiness()
+    return true
   }
 
   async close() {
