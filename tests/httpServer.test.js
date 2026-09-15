@@ -71,7 +71,7 @@ test('liveness stays healthy while readiness reflects persistence availability',
     assert.equal(live.status, 'live')
     assert.equal(live.mode, 'demo')
     assert.equal(live.apiVersion, 'v1')
-    assert.equal(live.milestone, 'M5')
+    assert.equal(live.milestone, 'M6')
 
     const readyResponse = await fetch(`${baseUrl}/api/v1/health/ready`)
     assert.equal(readyResponse.status, 503)
@@ -98,7 +98,7 @@ test('readiness reports the active storage backend and compatibility aliases rem
       assert.equal(payload.status, 'ready')
       assert.equal(payload.mode, 'demo')
       assert.equal(payload.apiVersion, 'v1')
-      assert.equal(payload.milestone, 'M5')
+      assert.equal(payload.milestone, 'M6')
       assert.equal(payload.persistence, 'memory')
     }
   } finally {
@@ -106,7 +106,7 @@ test('readiness reports the active storage backend and compatibility aliases rem
   }
 })
 
-test('API v1 creates a session and resolves a server-side spin with request IDs', async () => {
+test('API v1 creates a session, exposes a DEMO wallet and resolves a server-side spin', async () => {
   const server = createTestServer()
   const baseUrl = await listen(server)
 
@@ -120,6 +120,16 @@ test('API v1 creates a session and resolves a server-side spin with request IDs'
     const { session } = await sessionResponse.json()
     assert.equal(session.balance, 1000)
     assert.ok(session.id.length >= 40)
+
+    const walletResponse = await fetch(`${baseUrl}/api/v1/wallet`, {
+      headers: { 'X-Demo-Session': session.id },
+    })
+    assert.equal(walletResponse.status, 200)
+    const { wallet } = await walletResponse.json()
+    assert.equal(wallet.asset.code, 'DEMO')
+    assert.equal(wallet.asset.decimals, 2)
+    assert.equal(wallet.balanceAtomic, '100000')
+    assert.equal(wallet.balanceExact, '1000.00')
 
     const spinResponse = await fetch(`${baseUrl}/api/v1/spin`, {
       method: 'POST',
@@ -140,11 +150,15 @@ test('API v1 creates a session and resolves a server-side spin with request IDs'
   }
 })
 
-test('API v1 requires a valid demo session for spins and traces the error', async () => {
+test('wallet and spin endpoints require a valid demo session', async () => {
   const server = createTestServer()
   const baseUrl = await listen(server)
 
   try {
+    const walletResponse = await fetch(`${baseUrl}/api/v1/wallet`)
+    assert.equal(walletResponse.status, 401)
+    assert.equal((await walletResponse.json()).error.code, 'SESSION_REQUIRED')
+
     const response = await fetch(`${baseUrl}/api/v1/spin`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
