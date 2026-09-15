@@ -22,3 +22,7 @@ jobs:
         run: npm test
       - name: Build
         run: npm run build
+      - name: Production smoke check
+        run: npm run smoke
+      - name: Validate Docker image
+        run: docker build --tag gmvkasino:ci .
