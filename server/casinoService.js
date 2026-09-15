@@ -27,8 +27,8 @@ export class CasinoService {
     }))
   }
 
-  openSession({ sessionId, player } = {}) {
-    const result = this.sessionStore.resumeOrCreate({ sessionId, player })
+  async openSession({ sessionId, player } = {}) {
+    const result = await this.sessionStore.resumeOrCreate({ sessionId, player })
     this.auditLog.record(result.created ? 'session.created' : 'session.resumed', {
       sessionId: result.session.id,
       player: result.session.player || null,
@@ -37,16 +37,16 @@ export class CasinoService {
     return result.session
   }
 
-  getSession(sessionId) {
-    const session = this.sessionStore.get(sessionId)
+  async getSession(sessionId) {
+    const session = await this.sessionStore.get(sessionId)
     if (!session) {
       throw new CasinoError(401, 'SESSION_REQUIRED', 'Demo session is missing or expired')
     }
     return session
   }
 
-  spin({ sessionId, gameId, bet }) {
-    const session = this.getSession(sessionId)
+  async spin({ sessionId, gameId, bet }) {
+    const session = await this.getSession(sessionId)
     const game = getGameById(gameId)
 
     if (!game || game.status !== 'playable') {
@@ -71,10 +71,15 @@ export class CasinoService {
     }
 
     const result = spin(bet, this.rng)
-    const updatedSession = this.sessionStore.applySpin(session.id, {
+    const updatedSession = await this.sessionStore.applySpin(session.id, {
       bet,
       payout: result.totalWin,
     })
+
+    if (!updatedSession) {
+      throw new CasinoError(409, 'INSUFFICIENT_DEMO_CREDITS', 'Demo balance changed before settlement')
+    }
+
     const spinId = randomUUID()
 
     this.auditLog.record('spin.resolved', {
@@ -94,6 +99,17 @@ export class CasinoService {
       ...result,
       balance: updatedSession.balance,
       spins: updatedSession.spins,
+    }
+  }
+
+  async ready() {
+    if (typeof this.sessionStore.ready !== 'function') return true
+    return Boolean(await this.sessionStore.ready())
+  }
+
+  async close() {
+    if (typeof this.sessionStore.close === 'function') {
+      await this.sessionStore.close()
     }
   }
 }
