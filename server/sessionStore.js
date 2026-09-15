@@ -94,15 +94,21 @@ export class SessionStore {
     return removed
   }
 
-  applySpin(sessionId, { bet, payout }) {
+  settleSpin(sessionId, { bet, payout }) {
     const session = this.findMutable(sessionId)
-    if (!session) return null
+    if (!session) return { status: 'missing', session: null }
+    if (session.balance < bet) return { status: 'insufficient', session: this.snapshot(session) }
 
     session.balance = Number((session.balance - bet + payout).toFixed(2))
     session.spins += 1
     session.lastSeenAt = this.now()
     this.persist()
-    return this.snapshot(session)
+    return { status: 'ok', session: this.snapshot(session) }
+  }
+
+  applySpin(sessionId, { bet, payout }) {
+    const settlement = this.settleSpin(sessionId, { bet, payout })
+    return settlement.status === 'ok' ? settlement.session : null
   }
 
   async checkReadiness() {
