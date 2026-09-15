@@ -31,6 +31,15 @@ function nonEmptyString(env, key, fallback) {
   return value
 }
 
+function optionalSecret(env, key, { minLength = 24 } = {}) {
+  if (!hasValue(env, key)) return ''
+  const value = String(env[key]).trim()
+  if (value.length < minLength) {
+    throw new Error(`Invalid ${key}: expected at least ${minLength} characters`)
+  }
+  return value
+}
+
 function booleanValue(env, key, fallback = false) {
   if (!hasValue(env, key)) return fallback
   const value = String(env[key]).trim().toLowerCase()
@@ -58,6 +67,7 @@ export function loadServerConfig(env = process.env) {
     databaseUrl: hasValue(env, 'DATABASE_URL') ? String(env.DATABASE_URL).trim() : '',
     databaseSsl: booleanValue(env, 'DATABASE_SSL', false),
     databaseSslCa: multilineSecret(env.DATABASE_SSL_CA),
+    metricsToken: optionalSecret(env, 'METRICS_TOKEN'),
     rateLimitWindowMs: positiveNumber(env, 'SPIN_RATE_LIMIT_WINDOW_MS', 10_000, { integer: true }),
     rateLimitMaxSpins: positiveNumber(env, 'SPIN_RATE_LIMIT_MAX', 15, { integer: true }),
     maxBodyBytes: positiveNumber(env, 'MAX_JSON_BODY_BYTES', 16_384, { integer: true }),
