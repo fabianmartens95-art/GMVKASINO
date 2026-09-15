@@ -167,6 +167,18 @@ export function createHttpServer({ service, config, staticDir = DEFAULT_STATIC_D
         return
       }
 
+      if (apiPath === '/session/rotate' && req.method === 'POST') {
+        const session = await service.rotateSession(sessionIdFrom(req))
+        sendJson(res, 200, { session, requestId })
+        return
+      }
+
+      if (apiPath === '/session' && req.method === 'DELETE') {
+        await service.invalidateSession(sessionIdFrom(req))
+        sendJson(res, 200, { invalidated: true, requestId })
+        return
+      }
+
       if (apiPath === '/session' && req.method === 'POST') {
         const body = await readJson(req, config.maxBodyBytes)
         const session = await service.openSession({
