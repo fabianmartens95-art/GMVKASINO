@@ -9,6 +9,7 @@ export const GAMES = [
     rows: 3,
     paylines: 5,
     icon: '7',
+    allowedBets: [1, 2, 5, 10, 25],
   },
   {
     id: 'neon-fruits',
@@ -17,6 +18,7 @@ export const GAMES = [
     status: 'coming-soon',
     type: 'slot',
     icon: '🍓',
+    allowedBets: [],
   },
   {
     id: 'diamond-rush',
@@ -25,6 +27,7 @@ export const GAMES = [
     status: 'coming-soon',
     type: 'slot',
     icon: '💎',
+    allowedBets: [],
   },
   {
     id: 'lucky-777',
@@ -33,6 +36,7 @@ export const GAMES = [
     status: 'coming-soon',
     type: 'slot',
     icon: '7',
+    allowedBets: [],
   },
 ]
 

@@ -1,12 +1,14 @@
 {
   "name": "gmvkasino",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:server": "node server/index.js",
     "build": "vite build",
     "test": "node --test",
+    "start": "node server/index.js",
     "preview": "vite preview"
   },
   "dependencies": {

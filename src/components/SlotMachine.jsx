@@ -3,8 +3,6 @@ import { spinDemo } from '../api/casinoApi.js'
 import { getGameById } from '../config/games.js'
 import { createGrid } from '../game/slotEngine.js'
 
-const BETS = [1, 2, 5, 10, 25]
-
 function Symbol({ symbol, spinning }) {
   return (
     <div className={`slot-symbol symbol-${symbol.id} ${spinning ? 'is-spinning' : ''}`}>
@@ -13,45 +11,56 @@ function Symbol({ symbol, spinning }) {
   )
 }
 
-export default function SlotMachine({ gameId, balance, setBalance, onBack }) {
+export default function SlotMachine({ gameId, balance, setBalance, onBack, serverState, setServerState }) {
   const game = getGameById(gameId)
+  const bets = game.allowedBets?.length ? game.allowedBets : [1, 2, 5, 10, 25]
   const initialGrid = useMemo(() => createGrid(), [])
   const [grid, setGrid] = useState(initialGrid)
-  const [betIndex, setBetIndex] = useState(2)
+  const [betIndex, setBetIndex] = useState(Math.min(2, bets.length - 1))
   const [lastWin, setLastWin] = useState(0)
   const [message, setMessage] = useState('Place your bet and spin')
   const [spinning, setSpinning] = useState(false)
-  const bet = BETS[betIndex]
+  const bet = bets[betIndex]
 
   function changeBet(direction) {
     if (spinning) return
-    setBetIndex((current) => Math.min(BETS.length - 1, Math.max(0, current + direction)))
+    setBetIndex((current) => Math.min(bets.length - 1, Math.max(0, current + direction)))
   }
 
   async function handleSpin() {
     if (spinning) return
+    if (serverState === 'offline') {
+      setMessage('Demo server unavailable')
+      return
+    }
     if (balance < bet) {
       setMessage('Not enough demo credits')
       return
     }
 
     setSpinning(true)
-    setMessage('Spinning…')
-    setBalance((current) => Number((current - bet).toFixed(2)))
+    setMessage('Server resolving spin…')
 
     try {
       const result = await spinDemo({ gameId, bet })
+      setServerState('online')
 
       window.setTimeout(() => {
         setGrid(result.grid)
         setLastWin(result.totalWin)
-        setBalance((current) => Number((current + result.totalWin).toFixed(2)))
+        setBalance(result.balance)
         setMessage(result.totalWin > 0 ? `Win! +${result.totalWin.toFixed(2)} CR` : 'No win — spin again')
         setSpinning(false)
       }, 650)
-    } catch {
-      setBalance((current) => Number((current + bet).toFixed(2)))
-      setMessage('Spin unavailable')
+    } catch (error) {
+      if (error.code === 'INSUFFICIENT_DEMO_CREDITS') {
+        setMessage('Not enough demo credits')
+      } else if (error.code === 'RATE_LIMITED') {
+        setMessage('Too many spins — slow down')
+      } else {
+        setMessage('Demo server unavailable')
+        setServerState('offline')
+      }
       setSpinning(false)
     }
   }
@@ -64,7 +73,7 @@ export default function SlotMachine({ gameId, balance, setBalance, onBack }) {
           <span className="eyebrow">GMVKASINO ORIGINAL</span>
           <h1>{game.title}</h1>
         </div>
-        <div className="provably-demo">DEMO RNG</div>
+        <div className="provably-demo">SERVER RNG · DEMO</div>
       </div>
 
       <section className="slot-cabinet">
@@ -95,10 +104,10 @@ export default function SlotMachine({ gameId, balance, setBalance, onBack }) {
             <span>BET</span>
             <button onClick={() => changeBet(-1)} disabled={spinning || betIndex === 0}>−</button>
             <strong>{bet.toFixed(2)}</strong>
-            <button onClick={() => changeBet(1)} disabled={spinning || betIndex === BETS.length - 1}>+</button>
+            <button onClick={() => changeBet(1)} disabled={spinning || betIndex === bets.length - 1}>+</button>
           </div>
 
-          <button className="spin-button" onClick={handleSpin} disabled={spinning || balance < bet}>
+          <button className="spin-button" onClick={handleSpin} disabled={spinning || balance < bet || serverState === 'offline'}>
             <span>{spinning ? '…' : 'SPIN'}</span>
             <small>{bet.toFixed(2)} CR</small>
           </button>
@@ -112,9 +121,9 @@ export default function SlotMachine({ gameId, balance, setBalance, onBack }) {
       </section>
 
       <section className="game-info-panel">
-        <div><strong>Demo only</strong><span>No deposits or cash value</span></div>
+        <div><strong>Server-owned balance</strong><span>Browser cannot credit itself</span></div>
         <div><strong>{game.paylines} paylines</strong><span>Three identical symbols win</span></div>
-        <div><strong>Persistent demo</strong><span>Balance and player stay on this device</span></div>
+        <div><strong>Demo session</strong><span>Session token stays on this device</span></div>
       </section>
     </main>
   )

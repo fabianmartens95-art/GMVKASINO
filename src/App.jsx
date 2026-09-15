@@ -3,6 +3,7 @@ import Header from './components/Header.jsx'
 import CasinoLobby from './components/CasinoLobby.jsx'
 import SlotMachine from './components/SlotMachine.jsx'
 import LoginModal from './components/LoginModal.jsx'
+import { openDemoSession, syncDemoPlayer } from './api/casinoApi.js'
 import { usePersistentState } from './hooks/usePersistentState.js'
 
 const STARTING_BALANCE = 1000
@@ -14,9 +15,10 @@ function routeFromHash() {
 
 export default function App() {
   const [view, setView] = useState(routeFromHash)
-  const [balance, setBalance] = usePersistentState('gmvkasino.demo.balance', STARTING_BALANCE)
+  const [balance, setBalance] = useState(STARTING_BALANCE)
   const [player, setPlayer] = usePersistentState('gmvkasino.demo.player', '')
   const [loginOpen, setLoginOpen] = useState(false)
+  const [serverState, setServerState] = useState('connecting')
 
   useEffect(() => {
     const onHashChange = () => setView(routeFromHash())
@@ -24,14 +26,41 @@ export default function App() {
     return () => window.removeEventListener('hashchange', onHashChange)
   }, [])
 
+  useEffect(() => {
+    let active = true
+
+    openDemoSession({ player })
+      .then((session) => {
+        if (!active) return
+        setBalance(session.balance)
+        if (!player && session.player) setPlayer(session.player)
+        setServerState('online')
+      })
+      .catch(() => {
+        if (active) setServerState('offline')
+      })
+
+    return () => {
+      active = false
+    }
+  }, [])
+
   function navigate(nextView) {
     window.location.hash = nextView === 'slot' ? `game/${DEMO_GAME_ID}` : 'lobby'
     setView(nextView)
   }
 
-  function handleLogin(name) {
+  async function handleLogin(name) {
     setPlayer(name)
     setLoginOpen(false)
+
+    try {
+      const session = await syncDemoPlayer(name)
+      setBalance(session.balance)
+      setServerState('online')
+    } catch {
+      setServerState('offline')
+    }
   }
 
   return (
@@ -51,11 +80,13 @@ export default function App() {
           balance={balance}
           setBalance={setBalance}
           onBack={() => navigate('lobby')}
+          serverState={serverState}
+          setServerState={setServerState}
         />
       )}
 
       <footer>
-        <span>GMVKASINO · M2 DEMO CORE</span>
+        <span>GMVKASINO · M3 SERVER CORE · {serverState.toUpperCase()}</span>
         <span>Demo credits only · No monetary value</span>
       </footer>
 
