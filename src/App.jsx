@@ -86,7 +86,7 @@ export default function App() {
       )}
 
       <footer>
-        <span>GMVKASINO · M5 POSTGRES CORE · {serverState.toUpperCase()}</span>
+        <span>GMVKASINO · M6 LEDGER FOUNDATION · {serverState.toUpperCase()}</span>
         <span>Demo credits only · No monetary value</span>
       </footer>
 
