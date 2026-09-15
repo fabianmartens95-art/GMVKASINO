@@ -42,6 +42,11 @@ jobs:
         run: npm run db:migrate
       - name: Run tests
         run: npm test
+      - name: Reconcile demo ledger
+        env:
+          DATABASE_URL: postgresql://gmvkasino:gmvkasino@127.0.0.1:5432/gmvkasino_test
+          LEDGER_RECONCILE_ASSET: DEMO
+        run: npm run ledger:reconcile
       - name: Build frontend
         run: npm run build
       - name: Production smoke check
