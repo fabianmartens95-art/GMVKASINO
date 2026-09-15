@@ -34,7 +34,7 @@ After the first migration run, `schema_migrations` records `001_demo_sessions.sq
 - Add a new numbered migration for every schema change.
 - Prefer additive/backward-compatible changes when application rollback may be required.
 - Do not drop/rename columns in the same release that stops old application code from working unless the rollout plan explicitly handles the compatibility window.
-- Take the required pre-migration backup once the database recovery runbook is in force.
+- Follow the mandatory pre-migration backup checklist in [`DATABASE_RECOVERY.md`](DATABASE_RECOVERY.md) for incompatible, destructive or data-transforming changes.
 - Keep secrets, connection strings and production data out of migration files and test fixtures.
 - Migration SQL must be deterministic and safe to execute inside a transaction unless explicitly documented otherwise.
 
@@ -48,10 +48,11 @@ A change is not migration-complete until:
 2. `npm run db:migrate` succeeds against the CI PostgreSQL service,
 3. integration tests pass,
 4. application build/smoke/container gates pass,
-5. deployment/recovery implications are documented.
+5. deployment/recovery implications are documented,
+6. any required pre-migration recovery point is confirmed before hosted rollout.
 
 ## Rollback
 
 Application rollback and database rollback are separate operations. Do not delete rows from `schema_migrations` or manually reverse SQL as an ad-hoc rollback mechanism.
 
-For additive compatible migrations, roll the application back while leaving the newer schema in place. For an incompatible future migration, follow the database recovery runbook and the migration-specific rollback/restore plan.
+For additive compatible migrations, roll the application back while leaving the newer schema in place. For an incompatible future migration, follow [`DATABASE_RECOVERY.md`](DATABASE_RECOVERY.md) and the migration-specific rollback/restore plan. The recovery runbook requires restoring into an isolated target and validating it before cutover rather than overwriting the active database during a drill.
