@@ -18,7 +18,7 @@ JSON mode intentionally remains simpler and demo-only. Account registration/logi
 
 An active guest session can be converted in place during registration. The server locks the guest account, verifies that it has no credentials, flips the existing game session to `auth_required = TRUE`, attaches credentials to the same account, reads the existing wallet and creates an auth session inside one PostgreSQL transaction. The guest account id, wallet id, game-session id, balance and prior ledger entries therefore survive registration unchanged. No second `INITIAL_CREDIT` transaction is created.
 
-Rotating, expiring, logging out of or invalidating a session preserves the durable account, wallet and ledger history. Multiple authenticated game sessions can share one wallet, so PostgreSQL wallet reads are authoritative rather than the legacy session-balance mirror.
+Rotating, expiring, logging out of or invalidating a session preserves the durable account, wallet and ledger history. Multiple authenticated game sessions can share one wallet. PostgreSQL `demo_sessions` no longer stores a balance column; session responses hydrate balance exclusively from the account's ledger-backed wallet.
 
 ## Asset model
 
@@ -30,9 +30,9 @@ Amounts used by the ledger are integer atomic units stored as PostgreSQL `NUMERI
 
 `ledger_accounts` contains user and system accounts. User available wallets cannot go negative. System issuance/house accounts can go negative where required by demo accounting semantics.
 
-`ledger_transactions` describes business events such as `INITIAL_CREDIT` and `GAME_SETTLEMENT`. `ledger_entries` contains signed postings. A deferred PostgreSQL constraint trigger rejects transactions whose entries do not sum to zero and rejects entries whose ledger-account asset differs from the transaction asset.
+`ledger_transactions` describes business events such as `INITIAL_CREDIT` and `GAME_SETTLEMENT`. `ledger_entries` contains signed postings. A deferred database constraint trigger rejects transactions whose entries do not sum to zero and rejects entries whose ledger-account asset differs from the transaction asset.
 
-The wallet row maintains `balance_atomic` as a transactional cached balance. Ledger entries remain the accounting history. `demo_sessions.balance` remains a temporary compatibility mirror; PostgreSQL reads hydrate the current balance from the wallet.
+`ledger_accounts.balance_atomic` is the transactional cached balance used for fast wallet reads, while `ledger_entries` remains the accounting history. Migration `004_remove_session_balance.sql` removes the former `demo_sessions.balance` compatibility mirror after the account/ledger bootstrap has completed. PostgreSQL session records therefore contain identity/session metadata only and cannot diverge from the wallet through a second balance field.
 
 ## Ledger reconciliation
 
@@ -53,10 +53,10 @@ A PostgreSQL spin follows this order:
 5. conditionally update the user's DEMO wallet only when it can cover the wager;
 6. update the DEMO house ledger account;
 7. insert the `GAME_SETTLEMENT` transaction and balanced entries using `spinId` as the idempotency key;
-8. increment session spin count and update the compatibility balance mirror;
+8. increment the session spin count and refresh `last_seen_at`;
 9. commit all changes together.
 
-A concurrent request therefore cannot spend the same final DEMO units twice. Different authenticated sessions for one account still converge on the same wallet row.
+A concurrent request therefore cannot spend the same final DEMO units twice. Different authenticated sessions for one account still converge on the same wallet row, which is the only PostgreSQL balance source.
 
 ## Authentication flow
 
@@ -84,7 +84,7 @@ Request IDs, bounded operational metrics and structured HTTP logs remain enabled
 
 ## Operations
 
-GitHub CI starts an ephemeral PostgreSQL service, applies migrations and executes integration tests against the real database. M6 tests cover amount precision, migrations, credential hashing, token hashing, auth expiry, logout/revocation, authenticated gameplay, cross-account isolation, guest-to-account balance/ledger continuity, double-entry balancing, reconciliation drift detection and concurrent overspend protection.
+GitHub CI starts an ephemeral PostgreSQL service, applies migrations and executes integration tests against the real database. M6 tests cover amount precision, migrations, credential hashing, token hashing, auth expiry, logout/revocation, authenticated gameplay, cross-account isolation, guest-to-account balance/ledger continuity, removal of the legacy session-balance column, double-entry balancing, reconciliation drift detection and concurrent overspend protection.
 
 The CI workflow also runs the read-only DEMO ledger reconciliation after the tests. Existing database recovery, observability, migration, deployment and staging-promotion runbooks remain part of the operational baseline. Reconciliation procedures are documented in `docs/LEDGER_RECONCILIATION.md`.
 
