@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto'
+import { runMigrations } from './migrations.js'
 
 function cleanPlayer(player) {
   return typeof player === 'string' ? player.trim().slice(0, 40) : ''
@@ -38,24 +39,7 @@ export class PostgresSessionStore {
   }
 
   async init() {
-    await this.pool.query(`
-      CREATE TABLE IF NOT EXISTS demo_sessions (
-        id TEXT PRIMARY KEY,
-        player VARCHAR(40) NOT NULL DEFAULT '',
-        balance NUMERIC(18,2) NOT NULL,
-        spins BIGINT NOT NULL DEFAULT 0,
-        created_at BIGINT NOT NULL,
-        last_seen_at BIGINT NOT NULL
-      )
-    `)
-    await this.pool.query(`
-      CREATE INDEX IF NOT EXISTS demo_sessions_last_seen_idx
-      ON demo_sessions (last_seen_at)
-    `)
-    await this.pool.query(`
-      CREATE INDEX IF NOT EXISTS demo_sessions_created_at_idx
-      ON demo_sessions (created_at)
-    `)
+    await runMigrations({ pool: this.pool })
     await this.pruneExpired()
     return this
   }

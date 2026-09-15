@@ -14,6 +14,7 @@ The current M5 deployment expects:
 - `npm run smoke` for local or remote post-deploy verification
 - PostgreSQL as the preferred persistent store when `DATABASE_URL` is configured
 - JSON persistence only as a single-instance fallback
+- versioned PostgreSQL schema migrations under `server/migrations/`
 
 ## Pre-deploy gate
 
@@ -45,7 +46,15 @@ AUDIT_MAX_EVENTS=1000
 
 If the database uses a private CA, provide `DATABASE_SSL_CA`. When `DATABASE_SSL=true`, certificate verification remains enabled.
 
-The current PostgreSQL store creates its demo-session table and indexes during startup. M6 should replace runtime schema creation with explicit versioned migrations before staging is treated as release-grade.
+Before a controlled application rollout, apply pending migrations explicitly:
+
+```bash
+DATABASE_URL=<postgres connection string> npm run db:migrate
+```
+
+The application startup path also invokes the same migration runner before serving traffic, so migrations remain idempotent across repeated starts. Applied migration names are recorded in `schema_migrations`, and migration execution is protected by a PostgreSQL advisory lock.
+
+Migration authoring, compatibility and rollback rules are documented in [`DATABASE_MIGRATIONS.md`](DATABASE_MIGRATIONS.md).
 
 ## JSON fallback
 
@@ -83,7 +92,7 @@ The smoke check requires liveness, persistence readiness and the built frontend 
 
 If a deployment fails liveness, readiness, tests or the remote smoke check, do not promote it. Roll back to the most recent known-good image/revision, verify `/api/v1/health/live` and `/api/v1/health/ready`, then rerun the remote smoke check.
 
-Application rollback does not automatically roll back PostgreSQL data. Before future schema migrations, define backup, migration and rollback procedures explicitly.
+Application rollback does not automatically roll back PostgreSQL data. Do not delete `schema_migrations` rows or reverse migration SQL ad hoc. Prefer additive/backward-compatible migrations; follow the database recovery runbook for any future incompatible change.
 
 ## Secrets
 
