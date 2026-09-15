@@ -21,11 +21,19 @@ function mapRow(row) {
 }
 
 export class PostgresSessionStore {
-  constructor({ pool, startingBalance = 1000, ttlMs = 86_400_000, now = Date.now } = {}) {
+  constructor({
+    pool,
+    startingBalance = 1000,
+    ttlMs,
+    idleTtlMs = ttlMs ?? 86_400_000,
+    absoluteTtlMs = 604_800_000,
+    now = Date.now,
+  } = {}) {
     if (!pool) throw new Error('PostgresSessionStore requires a pool')
     this.pool = pool
     this.startingBalance = startingBalance
-    this.ttlMs = ttlMs
+    this.idleTtlMs = idleTtlMs
+    this.absoluteTtlMs = absoluteTtlMs
     this.now = now
   }
 
@@ -44,8 +52,20 @@ export class PostgresSessionStore {
       CREATE INDEX IF NOT EXISTS demo_sessions_last_seen_idx
       ON demo_sessions (last_seen_at)
     `)
+    await this.pool.query(`
+      CREATE INDEX IF NOT EXISTS demo_sessions_created_at_idx
+      ON demo_sessions (created_at)
+    `)
     await this.pruneExpired()
     return this
+  }
+
+  cutoffs(timestamp = this.now()) {
+    return {
+      timestamp,
+      idleCutoff: timestamp - this.idleTtlMs,
+      absoluteCutoff: timestamp - this.absoluteTtlMs,
+    }
   }
 
   async create({ player = '' } = {}) {
@@ -71,30 +91,32 @@ export class PostgresSessionStore {
 
   async get(sessionId) {
     if (!sessionId) return null
-    const timestamp = this.now()
-    const cutoff = timestamp - this.ttlMs
+    const { timestamp, idleCutoff, absoluteCutoff } = this.cutoffs()
     const result = await this.pool.query(
       `UPDATE demo_sessions
        SET last_seen_at = $2
-       WHERE id = $1 AND last_seen_at > $3
+       WHERE id = $1
+         AND last_seen_at > $3
+         AND created_at > $4
        RETURNING id, player, balance, spins, created_at, last_seen_at`,
-      [sessionId, timestamp, cutoff],
+      [sessionId, timestamp, idleCutoff, absoluteCutoff],
     )
     return mapRow(result.rows[0])
   }
 
   async resumeOrCreate({ sessionId, player } = {}) {
     if (sessionId) {
-      const timestamp = this.now()
-      const cutoff = timestamp - this.ttlMs
+      const { timestamp, idleCutoff, absoluteCutoff } = this.cutoffs()
       const hasPlayer = typeof player === 'string'
       const result = await this.pool.query(
         `UPDATE demo_sessions
          SET player = CASE WHEN $2::boolean THEN $3 ELSE player END,
              last_seen_at = $4
-         WHERE id = $1 AND last_seen_at > $5
+         WHERE id = $1
+           AND last_seen_at > $5
+           AND created_at > $6
          RETURNING id, player, balance, spins, created_at, last_seen_at`,
-        [sessionId, hasPlayer, cleanPlayer(player), timestamp, cutoff],
+        [sessionId, hasPlayer, cleanPlayer(player), timestamp, idleCutoff, absoluteCutoff],
       )
 
       if (result.rows[0]) {
@@ -105,9 +127,34 @@ export class PostgresSessionStore {
     return { session: await this.create({ player }), created: true }
   }
 
+  async rotate(sessionId) {
+    if (!sessionId) return null
+    const nextId = token()
+    const { timestamp, idleCutoff, absoluteCutoff } = this.cutoffs()
+    const result = await this.pool.query(
+      `UPDATE demo_sessions
+       SET id = $2,
+           last_seen_at = $3
+       WHERE id = $1
+         AND last_seen_at > $4
+         AND created_at > $5
+       RETURNING id, player, balance, spins, created_at, last_seen_at`,
+      [sessionId, nextId, timestamp, idleCutoff, absoluteCutoff],
+    )
+    return mapRow(result.rows[0])
+  }
+
+  async invalidate(sessionId) {
+    if (!sessionId) return false
+    const result = await this.pool.query(
+      'DELETE FROM demo_sessions WHERE id = $1 RETURNING id',
+      [sessionId],
+    )
+    return Boolean(result.rows[0])
+  }
+
   async applySpin(sessionId, { bet, payout }) {
-    const timestamp = this.now()
-    const cutoff = timestamp - this.ttlMs
+    const { timestamp, idleCutoff, absoluteCutoff } = this.cutoffs()
     const result = await this.pool.query(
       `UPDATE demo_sessions
        SET balance = balance - $2::numeric + $3::numeric,
@@ -115,16 +162,20 @@ export class PostgresSessionStore {
            last_seen_at = $4
        WHERE id = $1
          AND last_seen_at > $5
+         AND created_at > $6
          AND balance >= $2::numeric
        RETURNING id, player, balance, spins, created_at, last_seen_at`,
-      [sessionId, bet, payout, timestamp, cutoff],
+      [sessionId, bet, payout, timestamp, idleCutoff, absoluteCutoff],
     )
     return mapRow(result.rows[0])
   }
 
   async pruneExpired() {
-    const cutoff = this.now() - this.ttlMs
-    await this.pool.query('DELETE FROM demo_sessions WHERE last_seen_at <= $1', [cutoff])
+    const { idleCutoff, absoluteCutoff } = this.cutoffs()
+    await this.pool.query(
+      'DELETE FROM demo_sessions WHERE last_seen_at <= $1 OR created_at <= $2',
+      [idleCutoff, absoluteCutoff],
+    )
   }
 
   async ready() {
