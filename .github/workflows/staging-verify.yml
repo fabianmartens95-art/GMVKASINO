@@ -26,6 +26,11 @@ jobs:
           STAGING_BASE_URL: ${{ secrets.STAGING_BASE_URL }}
           PRIMARY_BASE_URL: ${{ secrets.PRIMARY_BASE_URL }}
         run: node scripts/validateStagingTarget.mjs
+      - name: Verify deployed staging revision
+        env:
+          STAGING_BASE_URL: ${{ secrets.STAGING_BASE_URL }}
+          EXPECTED_REVISION: ${{ github.sha }}
+        run: node scripts/verify-staging-revision.mjs
       - name: Run remote staging smoke check
         env:
           SMOKE_BASE_URL: ${{ secrets.STAGING_BASE_URL }}
@@ -37,6 +42,7 @@ jobs:
             echo ""
             echo "- Commit: \`${GITHUB_SHA}\`"
             echo "- Environment: \`staging\`"
+            echo "- Deployed revision: exact commit match"
             echo "- Remote smoke: passed"
             echo "- Target supplied through GitHub Environment secret \`STAGING_BASE_URL\`"
             echo "- No automatic promotion performed"

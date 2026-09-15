@@ -259,6 +259,7 @@ export function createHttpServer({
           mode: 'demo',
           milestone: 'M6',
           apiVersion: 'v1',
+          revision: config.deploymentRevision || null,
           requestId,
         })
         return
@@ -273,6 +274,7 @@ export function createHttpServer({
             mode: 'demo',
             milestone: 'M6',
             apiVersion: 'v1',
+            revision: config.deploymentRevision || null,
             persistence: readiness?.backend || 'unknown',
             requestId,
           })
@@ -283,6 +285,7 @@ export function createHttpServer({
             mode: 'demo',
             milestone: 'M6',
             apiVersion: 'v1',
+            revision: config.deploymentRevision || null,
             requestId,
           })
         }

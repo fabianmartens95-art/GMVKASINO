@@ -40,6 +40,21 @@ function optionalSecret(env, key, { minLength = 24 } = {}) {
   return value
 }
 
+function optionalGitRevision(env) {
+  const key = hasValue(env, 'RAILWAY_GIT_COMMIT_SHA')
+    ? 'RAILWAY_GIT_COMMIT_SHA'
+    : hasValue(env, 'APP_REVISION')
+      ? 'APP_REVISION'
+      : null
+  if (!key) return ''
+
+  const value = String(env[key]).trim().toLowerCase()
+  if (!/^[0-9a-f]{7,64}$/.test(value)) {
+    throw new Error(`Invalid ${key}: expected a hexadecimal git revision`)
+  }
+  return value
+}
+
 function booleanValue(env, key, fallback = false) {
   if (!hasValue(env, key)) return fallback
   const value = String(env[key]).trim().toLowerCase()
@@ -60,6 +75,7 @@ export function loadServerConfig(env = process.env) {
   return Object.freeze({
     host: nonEmptyString(env, 'HOST', '0.0.0.0'),
     port: positiveNumber(env, 'PORT', 8787, { integer: true, max: 65_535 }),
+    deploymentRevision: optionalGitRevision(env),
     startingBalance: positiveNumber(env, 'DEMO_STARTING_BALANCE', 1000),
     sessionIdleTtlMs,
     sessionAbsoluteTtlMs: positiveNumber(env, 'DEMO_SESSION_ABSOLUTE_TTL_MS', 604_800_000, { integer: true }),
