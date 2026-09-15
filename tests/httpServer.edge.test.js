@@ -39,6 +39,7 @@ function createTestServer({
     service,
     config: { maxBodyBytes },
     staticDir,
+    log: () => {},
   })
 }
 

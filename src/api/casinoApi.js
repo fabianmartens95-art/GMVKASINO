@@ -1,3 +1,4 @@
+const API_BASE = '/api/v1'
 const SESSION_KEY = 'gmvkasino.demo.sessionId'
 let memorySessionId = ''
 
@@ -23,7 +24,7 @@ async function request(path, { method = 'GET', body, includeSession = true } = {
   const sessionId = readSessionId()
   if (includeSession && sessionId) headers['X-Demo-Session'] = sessionId
 
-  const response = await fetch(path, {
+  const response = await fetch(`${API_BASE}${path}`, {
     method,
     headers,
     ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
@@ -35,6 +36,7 @@ async function request(path, { method = 'GET', body, includeSession = true } = {
     error.status = response.status
     error.code = payload.error?.code || 'API_ERROR'
     error.details = payload.error?.details
+    error.requestId = payload.error?.requestId || response.headers.get('x-request-id') || ''
     throw error
   }
 
@@ -42,12 +44,12 @@ async function request(path, { method = 'GET', body, includeSession = true } = {
 }
 
 export async function getGames() {
-  const payload = await request('/api/games', { includeSession: false })
+  const payload = await request('/games', { includeSession: false })
   return payload.games
 }
 
 export async function openDemoSession({ player = '' } = {}) {
-  const payload = await request('/api/session', {
+  const payload = await request('/session', {
     method: 'POST',
     body: { player },
   })
@@ -59,7 +61,7 @@ export async function getDemoSession() {
   if (!readSessionId()) return openDemoSession()
 
   try {
-    const payload = await request('/api/session')
+    const payload = await request('/session')
     return payload.session
   } catch (error) {
     if (error.status !== 401) throw error
@@ -74,7 +76,7 @@ export async function syncDemoPlayer(player) {
 
 export async function spinDemo({ gameId, bet }) {
   if (!readSessionId()) await openDemoSession()
-  const payload = await request('/api/spin', {
+  const payload = await request('/spin', {
     method: 'POST',
     body: { gameId, bet },
   })

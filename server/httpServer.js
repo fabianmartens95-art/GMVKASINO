@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { createServer } from 'node:http'
 import { readFile } from 'node:fs/promises'
 import { extname, isAbsolute, join, relative, resolve, sep } from 'node:path'
@@ -24,6 +25,14 @@ function setSecurityHeaders(res) {
   res.setHeader('Referrer-Policy', 'no-referrer')
   res.setHeader('X-Frame-Options', 'DENY')
   res.setHeader('Content-Security-Policy', "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data:; connect-src 'self'")
+}
+
+function requestIdFrom(req) {
+  const raw = req.headers['x-request-id']
+  const value = Array.isArray(raw) ? raw[0] : raw
+  return typeof value === 'string' && /^[A-Za-z0-9._-]{8,80}$/.test(value)
+    ? value
+    : randomUUID()
 }
 
 function sendJson(res, status, payload, extraHeaders = {}) {
@@ -60,6 +69,14 @@ async function readJson(req, maxBodyBytes) {
 function sessionIdFrom(req) {
   const value = req.headers['x-demo-session']
   return Array.isArray(value) ? value[0] : value
+}
+
+function normalizeApiPath(pathname) {
+  if (pathname === '/api/v1') return '/'
+  if (pathname.startsWith('/api/v1/')) return pathname.slice('/api/v1'.length)
+  if (pathname === '/api') return '/'
+  if (pathname.startsWith('/api/')) return pathname.slice('/api'.length)
+  return null
 }
 
 export function isPathWithin(rootPath, targetPath) {
@@ -106,59 +123,74 @@ async function serveStatic(res, pathname, staticDir) {
   }
 }
 
-export function createHttpServer({ service, config, staticDir = DEFAULT_STATIC_DIR } = {}) {
+export function createHttpServer({ service, config, staticDir = DEFAULT_STATIC_DIR, log = console.log } = {}) {
   if (!service) throw new Error('service is required')
   if (!config) throw new Error('config is required')
 
   return createServer(async (req, res) => {
+    const startedAt = Date.now()
+    const requestId = requestIdFrom(req)
+    const url = new URL(req.url || '/', 'http://localhost')
+    const pathname = url.pathname
+    const apiPath = normalizeApiPath(pathname)
+
+    res.setHeader('X-Request-Id', requestId)
+    res.once('finish', () => {
+      log(JSON.stringify({
+        scope: 'gmvkasino.http',
+        requestId,
+        method: req.method,
+        path: pathname,
+        status: res.statusCode,
+        durationMs: Date.now() - startedAt,
+      }))
+    })
+
     try {
-      const url = new URL(req.url || '/', 'http://localhost')
-      const pathname = url.pathname
-
-      if (pathname === '/api/health' && req.method === 'GET') {
-        sendJson(res, 200, { ok: true, mode: 'demo', milestone: 'M3' })
+      if (apiPath === '/health' && req.method === 'GET') {
+        sendJson(res, 200, { ok: true, mode: 'demo', milestone: 'M4', apiVersion: 'v1', requestId })
         return
       }
 
-      if (pathname === '/api/games' && req.method === 'GET') {
-        sendJson(res, 200, { games: service.getGames() })
+      if (apiPath === '/games' && req.method === 'GET') {
+        sendJson(res, 200, { games: service.getGames(), requestId })
         return
       }
 
-      if (pathname === '/api/session' && req.method === 'POST') {
+      if (apiPath === '/session' && req.method === 'POST') {
         const body = await readJson(req, config.maxBodyBytes)
         const session = service.openSession({
           sessionId: sessionIdFrom(req),
           player: body.player,
         })
-        sendJson(res, 200, { session })
+        sendJson(res, 200, { session, requestId })
         return
       }
 
-      if (pathname === '/api/session' && req.method === 'GET') {
+      if (apiPath === '/session' && req.method === 'GET') {
         const session = service.getSession(sessionIdFrom(req))
-        sendJson(res, 200, { session })
+        sendJson(res, 200, { session, requestId })
         return
       }
 
-      if (pathname === '/api/spin' && req.method === 'POST') {
+      if (apiPath === '/spin' && req.method === 'POST') {
         const body = await readJson(req, config.maxBodyBytes)
         const result = service.spin({
           sessionId: sessionIdFrom(req),
           gameId: body.gameId,
           bet: body.bet,
         })
-        sendJson(res, 200, { result })
+        sendJson(res, 200, { result, requestId })
         return
       }
 
-      if (pathname.startsWith('/api/')) {
-        sendJson(res, 404, { error: { code: 'API_NOT_FOUND', message: 'API route not found' } })
+      if (apiPath !== null) {
+        sendJson(res, 404, { error: { code: 'API_NOT_FOUND', message: 'API route not found', requestId } })
         return
       }
 
       if (req.method !== 'GET' && req.method !== 'HEAD') {
-        sendJson(res, 405, { error: { code: 'METHOD_NOT_ALLOWED', message: 'Method not allowed' } })
+        sendJson(res, 405, { error: { code: 'METHOD_NOT_ALLOWED', message: 'Method not allowed', requestId } })
         return
       }
 
@@ -175,6 +207,7 @@ export function createHttpServer({ service, config, staticDir = DEFAULT_STATIC_D
         error: {
           code,
           message,
+          requestId,
           ...(error.details ? { details: error.details } : {}),
         },
       }, headers)
