@@ -16,7 +16,6 @@ function mapRow(row) {
     id: row.id,
     accountId: row.account_id,
     player: row.player || '',
-    balance: Number(row.balance),
     spins: Number(row.spins),
     createdAt: Number(row.created_at),
     lastSeenAt: Number(row.last_seen_at),
@@ -100,14 +99,13 @@ export class PostgresSessionStore {
 
       const result = await client.query(
         `INSERT INTO demo_sessions (
-           id, account_id, player, balance, spins, created_at, last_seen_at, auth_required
-         ) VALUES ($1, $2, $3, $4, 0, $5, $5, FALSE)
-         RETURNING id, account_id, player, balance, spins, created_at, last_seen_at, auth_required`,
+           id, account_id, player, spins, created_at, last_seen_at, auth_required
+         ) VALUES ($1, $2, $3, 0, $4, $4, FALSE)
+         RETURNING id, account_id, player, spins, created_at, last_seen_at, auth_required`,
         [
           token(),
           identity.account.id,
           cleanPlayer(player),
-          identity.wallet.balanceExact,
           timestamp,
         ],
       )
@@ -151,10 +149,10 @@ export class PostgresSessionStore {
 
       const result = await client.query(
         `INSERT INTO demo_sessions (
-           id, account_id, player, balance, spins, created_at, last_seen_at, auth_required
-         ) VALUES ($1, $2, $3, $4, 0, $5, $5, TRUE)
-         RETURNING id, account_id, player, balance, spins, created_at, last_seen_at, auth_required`,
-        [token(), accountId, cleanPlayer(account.display_name), wallet.balanceExact, timestamp],
+           id, account_id, player, spins, created_at, last_seen_at, auth_required
+         ) VALUES ($1, $2, $3, 0, $4, $4, TRUE)
+         RETURNING id, account_id, player, spins, created_at, last_seen_at, auth_required`,
+        [token(), accountId, cleanPlayer(account.display_name), timestamp],
       )
 
       await client.query('COMMIT')
@@ -181,7 +179,7 @@ export class PostgresSessionStore {
          AND last_seen_at > $3
          AND created_at > $4
          AND (auth_required = FALSE OR ($5::text IS NOT NULL AND account_id = $5))
-       RETURNING id, account_id, player, balance, spins, created_at, last_seen_at, auth_required`,
+       RETURNING id, account_id, player, spins, created_at, last_seen_at, auth_required`,
       [sessionId, timestamp, idleCutoff, absoluteCutoff, accountId],
     )
     if (result.rows[0]) return this.hydrate(result.rows[0])
@@ -203,7 +201,7 @@ export class PostgresSessionStore {
              AND last_seen_at > $5
              AND created_at > $6
              AND (auth_required = FALSE OR ($7::text IS NOT NULL AND account_id = $7))
-           RETURNING id, account_id, player, balance, spins, created_at, last_seen_at, auth_required
+           RETURNING id, account_id, player, spins, created_at, last_seen_at, auth_required
          ), updated_account AS (
            UPDATE accounts
            SET display_name = $3
@@ -239,7 +237,7 @@ export class PostgresSessionStore {
          AND last_seen_at > $4
          AND created_at > $5
          AND (auth_required = FALSE OR ($6::text IS NOT NULL AND account_id = $6))
-       RETURNING id, account_id, player, balance, spins, created_at, last_seen_at, auth_required`,
+       RETURNING id, account_id, player, spins, created_at, last_seen_at, auth_required`,
       [sessionId, nextId, timestamp, idleCutoff, absoluteCutoff, accountId],
     )
     if (result.rows[0]) return this.hydrate(result.rows[0])
@@ -266,7 +264,7 @@ export class PostgresSessionStore {
     try {
       await client.query('BEGIN')
       const sessionResult = await client.query(
-        `SELECT id, account_id, player, balance, spins, created_at, last_seen_at, auth_required
+        `SELECT id, account_id, player, spins, created_at, last_seen_at, auth_required
          FROM demo_sessions
          WHERE id = $1
            AND last_seen_at > $2
@@ -296,12 +294,11 @@ export class PostgresSessionStore {
 
       const updatedResult = await client.query(
         `UPDATE demo_sessions
-         SET balance = $2::numeric,
-             spins = spins + 1,
-             last_seen_at = $3
+         SET spins = spins + 1,
+             last_seen_at = $2
          WHERE id = $1
-         RETURNING id, account_id, player, balance, spins, created_at, last_seen_at, auth_required`,
-        [sessionId, wallet.balanceExact, timestamp],
+         RETURNING id, account_id, player, spins, created_at, last_seen_at, auth_required`,
+        [sessionId, timestamp],
       )
 
       await client.query('COMMIT')

@@ -24,7 +24,8 @@ integrationTest('database migrations are tracked and idempotent', async () => {
        WHERE name IN (
          '001_demo_sessions.sql',
          '002_accounts_ledger.sql',
-         '003_account_auth.sql'
+         '003_account_auth.sql',
+         '004_remove_session_balance.sql'
        )
        ORDER BY name`,
     )
@@ -34,8 +35,18 @@ integrationTest('database migrations are tracked and idempotent', async () => {
         '001_demo_sessions.sql',
         '002_accounts_ledger.sql',
         '003_account_auth.sql',
+        '004_remove_session_balance.sql',
       ],
     )
+
+    const legacyBalanceColumn = await pool.query(
+      `SELECT 1
+       FROM information_schema.columns
+       WHERE table_schema = 'public'
+         AND table_name = 'demo_sessions'
+         AND column_name = 'balance'`,
+    )
+    assert.equal(legacyBalanceColumn.rowCount, 0)
   } finally {
     await pool.end()
   }
