@@ -69,8 +69,9 @@ Server-owned demo sessions/balances, server-side spin settlement, bet/funds vali
 - `GET /api/v1/wallet` exposes the current DEMO wallet through the session/account authorization boundary
 - Read-only ledger reconciliation compares cached balances with posting history, transaction balance/asset integrity and per-asset conservation
 - `npm run ledger:reconcile` exits non-zero on any accounting mismatch and is enforced as a CI gate
+- PostgreSQL `demo_sessions` stores no balance column; `ledger_accounts` is the sole PostgreSQL balance source
 
-The `demo_sessions.balance` column remains as a synchronized compatibility mirror during M6. PostgreSQL wallet balance is the authoritative read path. A later migration can remove the mirror after all consumers have moved to the wallet contract.
+Historical migration `002_accounts_ledger.sql` uses the old session balance only to bootstrap pre-ledger installations. Migration `004_remove_session_balance.sql` removes that compatibility column after the ledger has been populated. Runtime PostgreSQL session code no longer reads or writes a duplicate balance.
 
 ## Development
 
@@ -149,6 +150,8 @@ The model is deliberately capable of representing future asset definitions with 
 
 Every game ledger transaction must balance to zero. A demo wager of `5.00` and win of `12.00`, for example, produces postings between the user's DEMO wallet and the DEMO house ledger account; cached wallet balances are updated inside the same PostgreSQL transaction.
 
+PostgreSQL session records contain session/account metadata only. Session responses fetch the current balance from the ledger-backed wallet, so multiple sessions for the same account cannot maintain independent balance copies.
+
 `npm run ledger:reconcile` is a read-only integrity check. It verifies that every cached ledger-account balance equals the sum of its entries, every transaction remains balanced and single-asset, and the aggregate balance across each asset is zero. It never auto-repairs a mismatch. See [`docs/LEDGER_RECONCILIATION.md`](docs/LEDGER_RECONCILIATION.md).
 
 ## Account authentication
@@ -205,7 +208,8 @@ server/
 ├── migrations/
 │   ├── 001_demo_sessions.sql
 │   ├── 002_accounts_ledger.sql
-│   └── 003_account_auth.sql
+│   ├── 003_account_auth.sql
+│   └── 004_remove_session_balance.sql
 ├── operationalMetrics.js
 ├── postgresLedger.js
 ├── postgresSessionStore.js
@@ -258,4 +262,4 @@ This is still not a real-money architecture. Before any monetary or cryptocurren
 
 ## Next milestone
 
-Finish M6 with account recovery/MFA planning, staging verification of the authenticated and guest-upgrade flows, and removal of the legacy session-balance mirror once all consumers use the wallet contract. Real-money and cryptocurrency movement remain out of scope.
+Finish M6 with account recovery/MFA planning and staging verification of the authenticated, guest-upgrade and reconciliation flows. Real-money and cryptocurrency movement remain out of scope.
