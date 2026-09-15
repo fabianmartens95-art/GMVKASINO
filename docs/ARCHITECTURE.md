@@ -34,6 +34,14 @@ Amounts used by the ledger are integer atomic units stored as PostgreSQL `NUMERI
 
 The wallet row maintains `balance_atomic` as a transactional cached balance. Ledger entries remain the accounting history. `demo_sessions.balance` remains a temporary compatibility mirror; PostgreSQL reads hydrate the current balance from the wallet.
 
+## Ledger reconciliation
+
+`LedgerReconciler` provides a read-only integrity check over the PostgreSQL ledger. It compares each cached `ledger_accounts.balance_atomic` value with the exact sum of its ledger entries, verifies that ledger transactions have at least two entries with a zero signed sum and a single matching asset, and verifies that cached balances across all accounts for each asset conserve to zero.
+
+All reconciliation math uses integer atomic units. The command never rewrites balances or entries. `npm run ledger:reconcile` prints a structured report and returns a non-zero process status when any invariant fails. CI runs this check after the complete database-backed test suite and before accepting the build/smoke/container gates.
+
+A mismatch is treated as an operational incident rather than auto-repaired. The expected response is to preserve evidence, identify the affected account/transaction and apply an explicit reviewed recovery or corrective-ledger procedure.
+
 ## Atomic game settlement
 
 A PostgreSQL spin follows this order:
@@ -76,9 +84,9 @@ Request IDs, bounded operational metrics and structured HTTP logs remain enabled
 
 ## Operations
 
-GitHub CI starts an ephemeral PostgreSQL service, applies migrations and executes integration tests against the real database. M6 tests cover amount precision, migrations, credential hashing, token hashing, auth expiry, logout/revocation, authenticated gameplay, cross-account isolation, guest-to-account balance/ledger continuity, double-entry balancing and concurrent overspend protection.
+GitHub CI starts an ephemeral PostgreSQL service, applies migrations and executes integration tests against the real database. M6 tests cover amount precision, migrations, credential hashing, token hashing, auth expiry, logout/revocation, authenticated gameplay, cross-account isolation, guest-to-account balance/ledger continuity, double-entry balancing, reconciliation drift detection and concurrent overspend protection.
 
-Existing database recovery, observability, migration, deployment and staging-promotion runbooks remain part of the operational baseline.
+The CI workflow also runs the read-only DEMO ledger reconciliation after the tests. Existing database recovery, observability, migration, deployment and staging-promotion runbooks remain part of the operational baseline. Reconciliation procedures are documented in `docs/LEDGER_RECONCILIATION.md`.
 
 ## Explicit non-goals
 
