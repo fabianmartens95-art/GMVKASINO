@@ -40,7 +40,7 @@ async function close(server) {
   await new Promise((resolve) => server.close(resolve))
 }
 
-integrationTest('auth HTTP flow binds gameplay to the registered account and rejects missing auth', async () => {
+integrationTest('auth HTTP flow binds gameplay to the registered account and rejects missing or mismatched auth', async () => {
   const pool = new Pool({ connectionString: databaseUrl })
   let server
 
@@ -104,6 +104,30 @@ integrationTest('auth HTTP flow binds gameplay to the registered account and rej
     })
     assert.equal(unauthenticatedSpin.status, 401)
     assert.equal((await unauthenticatedSpin.json()).error.code, 'SESSION_REQUIRED')
+
+    const secondRegisterResponse = await fetch(`${baseUrl}/api/v1/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: 'other-account@example.com',
+        password: 'another-correct-demo-password',
+        displayName: 'Other Account',
+      }),
+    })
+    assert.equal(secondRegisterResponse.status, 201)
+    const secondAccount = await secondRegisterResponse.json()
+
+    const mismatchedSpin = await fetch(`${baseUrl}/api/v1/spin`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${secondAccount.auth.token}`,
+        'X-Demo-Session': registered.session.id,
+      },
+      body: JSON.stringify({ gameId: 'golden-vault', bet: 1 }),
+    })
+    assert.equal(mismatchedSpin.status, 401)
+    assert.equal((await mismatchedSpin.json()).error.code, 'SESSION_REQUIRED')
 
     const authenticatedSpin = await fetch(`${baseUrl}/api/v1/spin`, {
       method: 'POST',
