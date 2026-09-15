@@ -14,36 +14,21 @@ Central game catalog, persistent player display name, routing, deterministic RNG
 
 ### M3 — Server Core ✅
 
-- Node HTTP server
-- Server-owned demo sessions and balances
-- Server-side spin settlement
-- Allowed-bet and insufficient-credit validation
-- Per-session rate limiting
-- Structured audit logging
-- API endpoints and production static serving
-- Service and HTTP smoke tests
+Node HTTP server, server-owned demo sessions and balances, server-side spin settlement, validation, rate limiting, audit logging, API/static serving and smoke tests.
 
-### M4 — Persistent & Deployable Demo Core
+### M4 — Persistent & Deployable Demo Core ✅
 
-- Durable session repository adapter with atomic JSON-file persistence
-- Demo sessions and balances survive server restarts
-- 256-bit random demo session tokens
-- Explicit session rotation and invalidation endpoints
-- Separate idle and absolute session expiry limits
-- Browser bearer tokens stored in `sessionStorage`, with one-time migration away from legacy `localStorage`
-- Automatic client recovery from an expired/invalid session on safe retry paths
-- Versioned `/api/v1` contract
-- Temporary legacy `/api/*` compatibility aliases
-- `X-Request-Id` tracing on HTTP responses
-- Structured HTTP request logs without session-token logging
-- Audit events use non-reversible session fingerprints rather than raw bearer tokens
-- Fail-fast validation for explicit runtime configuration
-- Production-style multi-stage Docker image on Node.js 20
-- Local/remote deployment smoke check
-- Supported Railway demo deployment with one replica and persistent `/data` volume
-- CI validates tests, frontend build, production smoke and Docker image build
+Durable JSON persistence, hardened bearer sessions, API v1, request tracing, Docker deployment, Railway deployment guidance, production smoke checks and reproducible npm CI.
 
-The JSON repository is intentionally transitional. It establishes a storage abstraction without introducing a native database dependency yet. A later milestone can replace it with SQLite/Postgres while keeping the casino service contract stable.
+### M5 — Database-backed Demo Core 🚧
+
+- separate liveness and readiness endpoints
+- PostgreSQL repository selected through `DATABASE_URL`
+- migration-driven schema bootstrap
+- transactional/row-locked spin settlement
+- JSON persistence retained as a local fallback
+- PostgreSQL integration tests in CI
+- operational metrics and recovery runbook still pending
 
 ## Development
 
@@ -54,8 +39,6 @@ npm ci
 npm run dev:server
 ```
 
-Use `npm install` only when intentionally changing dependencies and commit the resulting `package-lock.json` update together with `package.json`.
-
 In a second terminal:
 
 ```bash
@@ -63,6 +46,15 @@ npm run dev
 ```
 
 Vite proxies `/api` to `http://127.0.0.1:8787`.
+
+Without `DATABASE_URL`, the server uses the local JSON repository at `.data/demo-sessions.json`. To use PostgreSQL, set `DATABASE_URL` and run migrations before starting the server:
+
+```bash
+DATABASE_URL=postgresql://user:password@127.0.0.1:5432/gmvkasino npm run db:migrate
+DATABASE_URL=postgresql://user:password@127.0.0.1:5432/gmvkasino npm run dev:server
+```
+
+The server also applies pending migrations during PostgreSQL startup. `npm run db:migrate` exists for explicit deployment and operational workflows.
 
 ## Validation
 
@@ -73,37 +65,21 @@ npm run smoke
 docker build -t gmvkasino:local .
 ```
 
-`npm run smoke` starts the production-style Node server locally when `SMOKE_BASE_URL` is not set and verifies both `/api/v1/health` and the built frontend. For an already deployed environment, run:
+PostgreSQL integration coverage runs when `DATABASE_URL` is present. GitHub CI provisions PostgreSQL, applies migrations, runs all tests, builds the frontend, executes the production smoke check and validates the Docker image.
+
+For an already deployed environment:
 
 ```bash
 SMOKE_BASE_URL=https://<domain> npm run smoke
 ```
 
-GitHub CI runs on Node 20, installs with `npm ci`, executes the automated tests, builds the frontend, runs the production smoke check and verifies that the Docker image builds.
-
-## Production-style local demo
-
-Without Docker:
-
-```bash
-npm run build
-npm start
-```
-
-With Docker:
-
-```bash
-docker build -t gmvkasino:local .
-docker run --rm -p 8787:8787 -e PORT=8787 gmvkasino:local
-```
-
-The Node server serves both the built frontend and API from the same origin.
-
 ## API
 
-Preferred M4 endpoints:
+Preferred M5 endpoints:
 
-- `GET /api/v1/health`
+- `GET /api/v1/health/live` — process liveness only
+- `GET /api/v1/health/ready` — persistence-aware readiness
+- `GET /api/v1/health` — backward-compatible readiness alias
 - `GET /api/v1/games`
 - `POST /api/v1/session`
 - `GET /api/v1/session`
@@ -111,48 +87,50 @@ Preferred M4 endpoints:
 - `DELETE /api/v1/session`
 - `POST /api/v1/spin`
 
-Every HTTP response receives an `X-Request-Id`. The frontend uses `/api/v1`; the prior unversioned routes remain temporary aliases.
-
-`POST /api/v1/session/rotate` preserves the current demo-session state while replacing the bearer token and invalidating the previous token. `DELETE /api/v1/session` invalidates the current token and removes the durable demo session.
+Every HTTP response receives an `X-Request-Id`. The frontend uses `/api/v1`; prior unversioned `/api/*` routes remain temporary compatibility aliases.
 
 ## Environment
 
-The server reads environment variables directly. `.env.example` documents the available values, including:
+Key variables:
 
 - `HOST`
 - `PORT`
+- `DATABASE_URL` — enables PostgreSQL when non-empty
+- `DEMO_SESSION_STORE_PATH` — JSON fallback path when PostgreSQL is disabled
 - `DEMO_STARTING_BALANCE`
 - `DEMO_SESSION_IDLE_TTL_MS`
 - `DEMO_SESSION_ABSOLUTE_TTL_MS`
-- `DEMO_SESSION_STORE_PATH`
 - `SPIN_RATE_LIMIT_WINDOW_MS`
 - `SPIN_RATE_LIMIT_MAX`
 - `MAX_JSON_BODY_BYTES`
 - `AUDIT_MAX_EVENTS`
 
-The default idle TTL is 24 hours. Valid activity refreshes the idle timer. The default absolute TTL is seven days and is never extended by activity or token rotation. The legacy `DEMO_SESSION_TTL_MS` variable is still accepted as an idle-TTL fallback for compatibility.
+The default idle TTL is 24 hours. Valid activity refreshes the idle timer. The default absolute TTL is seven days and is never extended by activity or token rotation. Explicit malformed numeric runtime values fail startup rather than silently falling back.
 
-Explicit malformed numeric runtime values fail startup instead of silently falling back. Local durable demo state defaults to `.data/demo-sessions.json` and is gitignored.
+Never commit a real `DATABASE_URL` or other credentials. `.env.example` contains only non-secret examples/placeholders.
+
+## Persistence
+
+`SessionStore` + `JsonSessionPersistence` remain the lightweight local fallback. `PostgresSessionRepository` is the shared-database implementation for M5.
+
+PostgreSQL session settlement uses a transaction and `SELECT ... FOR UPDATE` for the target session row. Balance and spin count are therefore updated atomically, and concurrent settlements cannot overwrite each other or overdraw the same demo balance.
+
+Schema changes live under `server/migrations/` and are tracked in `schema_migrations`. Migration execution is protected with a PostgreSQL advisory lock so multiple startup processes do not apply the same migration concurrently.
 
 ## Deployment
 
-Railway is the supported hosting target for the current demo deployment. The JSON-backed build must run as **one replica** with a persistent Railway Volume mounted at `/data` and:
+Railway remains the supported demo hosting target. For PostgreSQL deployments, inject the platform-provided `DATABASE_URL`; no session JSON volume is required. Use `/api/v1/health/ready` as the deployment readiness check and `/api/v1/health/live` for process liveness.
 
-```text
-DEMO_SESSION_STORE_PATH=/data/demo-sessions.json
-```
+The full deployment and rollback procedure is in [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
 
-Use `/api/v1/health` as the deployment healthcheck. After deployment, run the remote smoke check before considering the release verified.
-
-The full deployment, volume, rollback and secret-handling procedure is documented in [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
-
-This deployment model is not a production gambling architecture and is not intended for horizontal scaling. Replace the JSON persistence layer with a real shared database before multiple replicas or production identity are introduced.
+The JSON fallback remains single-replica only. PostgreSQL removes that storage constraint, but production identity, financial ledgering and real-money functionality remain explicitly out of scope.
 
 ## Architecture
 
 ```text
 Dockerfile
 scripts/
+├── migrate.mjs
 └── smoke.mjs
 
 docs/
@@ -165,6 +143,10 @@ server/
 ├── httpServer.js
 ├── index.js
 ├── jsonSessionPersistence.js
+├── migrations.js
+├── migrations/
+│   └── 001_demo_sessions.sql
+├── postgresSessionRepository.js
 ├── rateLimiter.js
 └── sessionStore.js
 
@@ -181,19 +163,19 @@ tests/
 ├── casinoApi.test.js
 ├── clientSessionApi.test.js
 ├── config.test.js
+├── httpServer.edge.test.js
 ├── httpServer.test.js
+├── postgresSessionRepository.test.js
 ├── sessionPersistence.test.js
 └── slotEngine.test.js
 ```
 
 ## Security boundary
 
-The browser cannot settle spins or credit itself. It submits a game ID and allowed bet; the server validates the demo session, balance, game configuration and rate limit, resolves the spin, persists the resulting demo balance, records audit data and returns the authoritative result.
+The browser cannot settle spins or credit itself. A demo session ID is a bearer secret and must not be logged, placed in URLs, analytics, screenshots or source control. Audit records use a short non-reversible fingerprint instead of the raw token.
 
-A demo session identifier is a **bearer secret**: possession of the token is sufficient to act as that demo session. It must not be placed in URLs, general request logs, analytics events, screenshots or source control. The browser stores it in `sessionStorage` rather than durable `localStorage`; a legacy local-storage token is migrated once and removed. Server audit records use a short SHA-256-derived session fingerprint for correlation instead of logging the token itself.
+This remains a non-monetary demo architecture. Before any real-money functionality, a separate legal/compliance decision and production-grade identity, financial ledger/database design, RNG/game certification where applicable, geofencing, AML/KYC, responsible-gambling controls, monitoring, secrets management and infrastructure hardening would be required.
 
-This is still not a real-money architecture. Before any monetary functionality, the project would require a separate legal/compliance decision and production-grade identity, database/ledger design, certified game/RNG requirements where applicable, geofencing, AML/KYC, responsible-gambling controls, monitoring, secrets management and infrastructure hardening.
+## Next work
 
-## Next milestone
-
-M5 should replace transitional JSON persistence with a real database adapter, add production authentication/identity, separate liveness/readiness semantics, metrics and alerting, strengthen secret management, and define database migration/backup/recovery procedures. Real-money functionality remains out of scope.
+After PostgreSQL is merged, M5 continues with bounded operational metrics/observability and the database backup, migration and recovery runbook. Real-money functionality remains out of scope.
