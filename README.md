@@ -35,12 +35,14 @@ Durable JSON session persistence, 256-bit demo session tokens, `/api/v1`, reques
 
 ## Development
 
-Without PostgreSQL, the local JSON persistence fallback still works:
+Install the exact committed dependency graph:
 
 ```bash
-npm install
+npm ci
 npm run dev:server
 ```
+
+Use `npm install` only when intentionally changing dependencies and commit the resulting `package-lock.json` together with `package.json`.
 
 In a second terminal:
 
@@ -59,11 +61,12 @@ The demo is then served on port `8787`.
 ## Validation
 
 ```bash
+npm audit --audit-level=high
 npm test
 npm run build
 ```
 
-GitHub CI starts PostgreSQL, runs the database integration tests, builds the production frontend and verifies that the Docker image builds successfully.
+GitHub CI runs on Node 22, restores the npm cache from the committed lockfile, installs with `npm ci`, starts PostgreSQL, runs the database integration tests, builds the production frontend and verifies that the Docker image builds successfully.
 
 ## API
 
