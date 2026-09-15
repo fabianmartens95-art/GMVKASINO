@@ -1,65 +1,56 @@
 # GMVKASINO
 
-GMVKASINO is currently an early playable casino-shell prototype. It is a demo-only project: credits have no monetary value and there are no deposits, withdrawals, crypto payments, real-money wagering, KYC, or production authentication.
+GMVKASINO is an early playable casino-shell prototype. It is demo-only: credits have no monetary value and there are no deposits, withdrawals, crypto payments, real-money wagering, KYC, or production authentication.
 
 ## Milestones
 
 ### M1 — Playable Casino Shell ✅
 
-- Responsive casino lobby
-- Classic slot-machine visual direction
-- Playable `Golden Vault` 3x3 slot demo
-- Five fixed paylines
-- Weighted demo RNG
-- Demo-credit wallet with adjustable bet sizes
-- Local login/profile mock
-- Mobile layout
-- Automated tests and GitHub CI
+Responsive casino lobby, classic slot-machine UI, playable `Golden Vault` 3x3 slot, five paylines, demo-credit wallet, mobile layout and initial CI.
 
 ### M2 — Demo Core ✅
 
-- Central game catalog/configuration
-- Persistent player name and client session token
-- Hash-based lobby/game routing
-- Injectable RNG for deterministic engine testing
-- Client API boundary
-- Expanded test coverage
+Central game catalog, persistent player display name, routing, deterministic RNG test hooks and a client API boundary.
 
-### M3 — Server Core
+### M3 — Server Core ✅
 
-- Node HTTP server with no additional backend framework
+- Node HTTP server
 - Server-owned demo sessions and balances
 - Server-side spin settlement
-- Allowed-bet validation and insufficient-credit protection
-- Per-session sliding-window spin rate limiting
-- Structured in-memory audit events with JSON log output
-- `/api/health`, `/api/games`, `/api/session`, and `/api/spin`
-- Production static-file serving from `dist/`
-- Vite development proxy for `/api`
-- Environment-based server configuration
-- Service-level and HTTP smoke tests
+- Allowed-bet and insufficient-credit validation
+- Per-session rate limiting
+- Structured audit logging
+- API endpoints and production static serving
+- Service and HTTP smoke tests
+
+### M4 — Persistent Core
+
+- Durable session repository adapter with atomic JSON-file persistence
+- Demo sessions and balances survive server restarts
+- 256-bit random demo session tokens
+- Versioned `/api/v1` contract
+- Temporary legacy `/api/*` compatibility aliases
+- `X-Request-Id` tracing on HTTP responses
+- Structured HTTP request logs without session-token logging
+- Persistence restart/expiry tests
+- API v1 request-tracing tests
+
+The JSON repository is intentionally transitional. It establishes a storage abstraction without introducing a native database dependency yet. A later milestone can replace it with SQLite/Postgres while keeping the casino service contract stable.
 
 ## Development
 
-Install dependencies:
-
 ```bash
 npm install
-```
-
-Start the API server in one terminal:
-
-```bash
 npm run dev:server
 ```
 
-Start Vite in a second terminal:
+In a second terminal:
 
 ```bash
 npm run dev
 ```
 
-Vite proxies `/api` requests to `http://127.0.0.1:8787`.
+Vite proxies `/api` to `http://127.0.0.1:8787`.
 
 ## Validation
 
@@ -68,31 +59,44 @@ npm test
 npm run build
 ```
 
-GitHub CI runs both commands on pushes to `main` and pull requests.
+GitHub CI runs tests and the production build for pushes to `main` and pull requests.
 
-## Production-style local run
+## Production-style local demo
 
 ```bash
 npm run build
 npm start
 ```
 
-The Node server serves the built frontend and API from the same origin.
+The Node server serves both the built frontend and API from the same origin.
+
+## API
+
+Preferred M4 endpoints:
+
+- `GET /api/v1/health`
+- `GET /api/v1/games`
+- `POST /api/v1/session`
+- `GET /api/v1/session`
+- `POST /api/v1/spin`
+
+Every HTTP response receives an `X-Request-Id`. The frontend uses `/api/v1`; the prior unversioned routes remain temporary aliases.
 
 ## Environment
 
-Copy `.env.example` values into your deployment environment as needed. The current server reads environment variables directly; it does not load `.env` files by itself.
-
-Key settings include:
+The server reads environment variables directly. `.env.example` documents the available values, including:
 
 - `HOST`
 - `PORT`
 - `DEMO_STARTING_BALANCE`
 - `DEMO_SESSION_TTL_MS`
+- `DEMO_SESSION_STORE_PATH`
 - `SPIN_RATE_LIMIT_WINDOW_MS`
 - `SPIN_RATE_LIMIT_MAX`
 - `MAX_JSON_BODY_BYTES`
 - `AUDIT_MAX_EVENTS`
+
+Local durable demo state defaults to `.data/demo-sessions.json` and is gitignored.
 
 ## Architecture
 
@@ -103,17 +107,15 @@ server/
 ├── config.js
 ├── httpServer.js
 ├── index.js
+├── jsonSessionPersistence.js
 ├── rateLimiter.js
 └── sessionStore.js
 
 src/
-├── api/
-│   └── casinoApi.js
+├── api/casinoApi.js
 ├── components/
-├── config/
-│   └── games.js
-├── game/
-│   └── slotEngine.js
+├── config/games.js
+├── game/slotEngine.js
 ├── hooks/
 ├── App.jsx
 └── main.jsx
@@ -121,15 +123,16 @@ src/
 tests/
 ├── casinoApi.test.js
 ├── httpServer.test.js
+├── sessionPersistence.test.js
 └── slotEngine.test.js
 ```
 
 ## Security boundary
 
-The browser no longer settles spins or credits itself. It submits a game ID and allowed bet to the demo server; the server validates the session, available balance, rate limit and game configuration, resolves the spin, settles the balance, records an audit event, and returns the authoritative result.
+The browser cannot settle spins or credit itself. It submits a game ID and allowed bet; the server validates the demo session, balance, game configuration and rate limit, resolves the spin, persists the resulting demo balance, records audit data and returns the authoritative result.
 
-This is still not a real-money architecture. Before any monetary functionality, the project would require a separate legal/compliance decision, production-grade identity/authentication, persistent storage, certified game/RNG requirements where applicable, financial ledger design, geofencing, AML/KYC controls, responsible-gambling controls, monitoring, secrets management and infrastructure hardening.
+This is still not a real-money architecture. Before any monetary functionality, the project would require a separate legal/compliance decision and production-grade identity, database/ledger design, certified game/RNG requirements where applicable, geofencing, AML/KYC, responsible-gambling controls, monitoring, secrets management and infrastructure hardening.
 
 ## Next milestone
 
-M4 should replace in-memory state with a persistent database-backed repository layer, add explicit API versioning and request IDs, introduce authentication/session hardening, improve observability, and prepare a repeatable deployment environment. Real-money functionality remains out of scope.
+M5 should introduce a real database adapter behind the existing repository boundary, stronger authentication/session lifecycle controls, deployment/container configuration, health/readiness separation, metrics, and operational recovery procedures. Real-money functionality remains out of scope.
