@@ -8,11 +8,14 @@ function multilineSecret(value) {
 }
 
 export function loadServerConfig(env = process.env) {
+  const legacySessionTtl = env.DEMO_SESSION_TTL_MS
+
   return Object.freeze({
     host: env.HOST || '0.0.0.0',
     port: positiveNumber(env.PORT, 8787),
     startingBalance: positiveNumber(env.DEMO_STARTING_BALANCE, 1000),
-    sessionTtlMs: positiveNumber(env.DEMO_SESSION_TTL_MS, 86_400_000),
+    sessionIdleTtlMs: positiveNumber(env.DEMO_SESSION_IDLE_TTL_MS ?? legacySessionTtl, 86_400_000),
+    sessionAbsoluteTtlMs: positiveNumber(env.DEMO_SESSION_ABSOLUTE_TTL_MS, 604_800_000),
     sessionStorePath: env.DEMO_SESSION_STORE_PATH || '.data/demo-sessions.json',
     databaseUrl: env.DATABASE_URL || '',
     databaseSsl: env.DATABASE_SSL === 'true',
