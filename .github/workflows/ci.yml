@@ -47,6 +47,77 @@ jobs:
           DATABASE_URL: postgresql://gmvkasino:gmvkasino@127.0.0.1:5432/gmvkasino_test
           LEDGER_RECONCILE_ASSET: DEMO
         run: npm run ledger:reconcile
+      - name: Create PostgreSQL recovery dump
+        run: |
+          docker run --rm --network host \
+            -e PGPASSWORD=gmvkasino \
+            -v "${RUNNER_TEMP}:/backup" \
+            postgres:16-alpine \
+            pg_dump \
+              -h 127.0.0.1 \
+              -p 5432 \
+              -U gmvkasino \
+              -d gmvkasino_test \
+              --format=custom \
+              --no-owner \
+              --no-privileges \
+              --file=/backup/gmvkasino-ci.dump
+          test -s "${RUNNER_TEMP}/gmvkasino-ci.dump"
+      - name: Restore PostgreSQL recovery dump
+        run: |
+          docker run --rm --network host \
+            -e PGPASSWORD=gmvkasino \
+            postgres:16-alpine \
+            psql \
+              -h 127.0.0.1 \
+              -p 5432 \
+              -U gmvkasino \
+              -d postgres \
+              -v ON_ERROR_STOP=1 \
+              -c "DROP DATABASE IF EXISTS gmvkasino_restore WITH (FORCE)"
+          docker run --rm --network host \
+            -e PGPASSWORD=gmvkasino \
+            postgres:16-alpine \
+            psql \
+              -h 127.0.0.1 \
+              -p 5432 \
+              -U gmvkasino \
+              -d postgres \
+              -v ON_ERROR_STOP=1 \
+              -c "CREATE DATABASE gmvkasino_restore"
+          docker run --rm --network host \
+            -e PGPASSWORD=gmvkasino \
+            -v "${RUNNER_TEMP}:/backup" \
+            postgres:16-alpine \
+            pg_restore \
+              -h 127.0.0.1 \
+              -p 5432 \
+              -U gmvkasino \
+              -d gmvkasino_restore \
+              --no-owner \
+              --no-privileges \
+              --exit-on-error \
+              /backup/gmvkasino-ci.dump
+      - name: Verify restored PostgreSQL database
+        env:
+          DATABASE_URL: postgresql://gmvkasino:gmvkasino@127.0.0.1:5432/gmvkasino_test
+          RESTORE_DATABASE_URL: postgresql://gmvkasino:gmvkasino@127.0.0.1:5432/gmvkasino_restore
+          LEDGER_RECONCILE_ASSET: DEMO
+        run: npm run db:restore:verify
+      - name: Clean restore drill
+        if: always()
+        run: |
+          docker run --rm --network host \
+            -e PGPASSWORD=gmvkasino \
+            postgres:16-alpine \
+            psql \
+              -h 127.0.0.1 \
+              -p 5432 \
+              -U gmvkasino \
+              -d postgres \
+              -v ON_ERROR_STOP=1 \
+              -c "DROP DATABASE IF EXISTS gmvkasino_restore WITH (FORCE)"
+          rm -f "${RUNNER_TEMP}/gmvkasino-ci.dump"
       - name: Build frontend
         run: npm run build
       - name: Production smoke check

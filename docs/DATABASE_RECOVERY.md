@@ -115,6 +115,27 @@ Verification checklist:
 
 Do not copy player names, session bearer tokens, database URLs or other live secrets into test fixtures, GitHub issues, screenshots or recovery notes. Use aggregate counts and synthetic verification data.
 
+### Automated CI logical-restore drill
+
+The normal GitHub CI pipeline now exercises the portable logical-backup path with synthetic CI data on every run. This is a technical regression control for dump/restore compatibility; it is not evidence that hosted Railway scheduled backups or PITR are enabled.
+
+The CI drill performs the following sequence with PostgreSQL 16 tooling:
+
+1. Apply migrations and run the complete database-backed test suite.
+2. Reconcile the source DEMO ledger.
+3. Create a custom-format `pg_dump` of the ephemeral CI database using `--no-owner --no-privileges`.
+4. Create an isolated `gmvkasino_restore` scratch database.
+5. Restore the dump with `pg_restore --exit-on-error`.
+6. Run `npm run db:restore:verify` against source and restore.
+7. Require the restored database to be migration-complete with no pending migrations.
+8. Compare aggregate row counts for `schema_migrations`, `accounts`, `assets`, `ledger_accounts`, `ledger_transactions`, `ledger_entries`, `demo_sessions` and `auth_sessions`.
+9. Reconcile the restored DEMO ledger and verify that the removed legacy `demo_sessions.balance` column is still absent.
+10. Always destroy the scratch database and temporary dump before continuing the pipeline.
+
+The verifier prints aggregate counts and reconciliation totals only. It does not print database URLs, player rows, passwords or bearer tokens.
+
+This automated CI drill complements but does not replace the hosted restore drill. At least monthly, a real hosted/provider recovery point or offsite logical dump must still be restored into an isolated hosted target and validated through readiness/application smoke checks. Provider backup schedules, PITR state, retention and access controls remain separate operational gates.
+
 ## Database outage checklist
 
 When the application is live but not ready:
@@ -155,11 +176,11 @@ Once per quarter while the hosted demo is active, the backup owner should verify
 - scheduled Railway backup settings and actual recent backup timestamps
 - PITR status and available recovery window
 - existence and age of offsite logical dumps
-- most recent restore-drill result
+- most recent hosted restore-drill result
 - current RPO/RTO suitability
 - current migration/recovery docs still match the deployed architecture
 
-Any failed/missing layer becomes a P0 operational task before a risky schema migration.
+The automated CI drill is an additional regression signal and does not satisfy these provider-level checks by itself. Any failed/missing hosted layer becomes a P0 operational task before a risky schema migration.
 
 ## Current Railway references
 

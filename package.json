@@ -9,6 +9,7 @@
     "build": "vite build",
     "test": "node --test --test-concurrency=1",
     "db:migrate": "node scripts/migrate.mjs",
+    "db:restore:verify": "node scripts/verify-restore.mjs",
     "ledger:reconcile": "node scripts/reconcile-ledger.mjs",
     "start": "node server/index.js",
     "smoke": "node scripts/smoke.mjs",
