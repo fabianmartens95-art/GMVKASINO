@@ -2,7 +2,7 @@
 
 Current milestone: M6 Account, Ledger & Auth Foundation.
 
-The frontend remains a React/Vite demo shell. Game outcomes and value settlement remain server-authoritative. PostgreSQL mode now separates durable account identity, revocable account-auth sessions, revocable game sessions, DEMO wallets and ledger history.
+The frontend remains a React/Vite demo shell. Game outcomes and value settlement remain server-authoritative. PostgreSQL mode separates durable account identity, revocable account-auth sessions, revocable game sessions, DEMO wallets and ledger history.
 
 ## Storage modes
 
@@ -15,6 +15,8 @@ JSON mode intentionally remains simpler and demo-only. Account registration/logi
 `accounts` is the durable identity record. `auth_sessions` contains revocable account-auth sessions and stores only SHA-256 hashes of random 256-bit bearer tokens. Passwords are derived with `scrypt` using an independent random salt per account; raw passwords are never persisted.
 
 `demo_sessions` remains the game-session bearer layer. Guest sessions have `auth_required = FALSE`. Registered-account sessions have `auth_required = TRUE` and are bound to the same `account_id` as the account's wallet. Account-bound game operations require both the game-session bearer and a valid account-auth bearer resolving to the same account.
+
+An active guest session can be converted in place during registration. The server locks the guest account, verifies that it has no credentials, flips the existing game session to `auth_required = TRUE`, attaches credentials to the same account, reads the existing wallet and creates an auth session inside one PostgreSQL transaction. The guest account id, wallet id, game-session id, balance and prior ledger entries therefore survive registration unchanged. No second `INITIAL_CREDIT` transaction is created.
 
 Rotating, expiring, logging out of or invalidating a session preserves the durable account, wallet and ledger history. Multiple authenticated game sessions can share one wallet, so PostgreSQL wallet reads are authoritative rather than the legacy session-balance mirror.
 
@@ -50,11 +52,11 @@ A concurrent request therefore cannot spend the same final DEMO units twice. Dif
 
 ## Authentication flow
 
-Registration is PostgreSQL-only. It creates one durable account, one DEMO wallet, one auth session and an account-bound game session. Login creates fresh auth and game sessions for the existing account and existing wallet; it does not issue a new wallet balance.
+Registration is PostgreSQL-only. Without an active guest session, it creates one durable account, one DEMO wallet, one auth session and an account-bound game session. With an active guest session, it upgrades that existing account and session in place and preserves the current DEMO wallet and ledger history. Login creates fresh auth and game sessions for the existing account and existing wallet; it does not issue a new wallet balance.
 
 Auth session activity refreshes only idle expiry. Absolute expiry is fixed at creation. Logout revokes the auth token and, when the current game-session bearer is supplied, invalidates that game session as well. Auth endpoints are protected by a separate sliding-window rate limiter.
 
-The browser stores account-auth and game-session tokens separately in `sessionStorage`. An expired auth token is surfaced to the client and does not silently downgrade a registered player to a guest session.
+The browser stores account-auth and game-session tokens separately in `sessionStorage`. Registration deliberately sends an existing guest game-session token so the server can perform an in-place upgrade, while it omits account auth from the registration request. An expired auth token is surfaced to the client and does not silently downgrade a registered player to a guest session.
 
 ## HTTP and observability
 
@@ -62,7 +64,7 @@ The API remains versioned under `/api/v1`.
 
 - `/health/live` is process liveness.
 - `/health/ready` is persistence readiness.
-- `/auth/register` creates a demo account.
+- `/auth/register` creates a demo account or upgrades the supplied active guest session in place.
 - `/auth/login` authenticates a demo account.
 - `/auth/me` returns account + current DEMO wallet.
 - `/auth/logout` revokes the current auth session.
@@ -70,11 +72,11 @@ The API remains versioned under `/api/v1`.
 - `/spin` resolves and settles a server-authoritative demo spin.
 - `/internal/metrics` remains protected by the configured metrics bearer token.
 
-Request IDs, bounded operational metrics and structured HTTP logs remain enabled. Auth routes are normalized to fixed metric-route names. Raw auth/game bearer tokens are not written to audit events or metrics.
+Request IDs, bounded operational metrics and structured HTTP logs remain enabled. Auth routes are normalized to fixed metric-route names. Raw auth/game bearer tokens are not written to audit events or metrics. Guest upgrades increment the bounded `auth.guest_upgraded` event counter.
 
 ## Operations
 
-GitHub CI starts an ephemeral PostgreSQL service, applies migrations and executes integration tests against the real database. M6 tests cover amount precision, migrations, credential hashing, token hashing, auth expiry, logout/revocation, authenticated gameplay, account/session separation, double-entry balancing and concurrent overspend protection.
+GitHub CI starts an ephemeral PostgreSQL service, applies migrations and executes integration tests against the real database. M6 tests cover amount precision, migrations, credential hashing, token hashing, auth expiry, logout/revocation, authenticated gameplay, cross-account isolation, guest-to-account balance/ledger continuity, double-entry balancing and concurrent overspend protection.
 
 Existing database recovery, observability, migration, deployment and staging-promotion runbooks remain part of the operational baseline.
 
