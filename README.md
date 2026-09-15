@@ -35,8 +35,9 @@ Server-owned demo sessions/balances, server-side spin settlement, bet/funds vali
 - Async storage contract while keeping the casino service API stable
 - Real PostgreSQL integration tests in GitHub CI
 - Verified PostgreSQL TLS when `DATABASE_SSL=true`, with optional private CA support
-- Separate liveness (`/api/v1/health`) and readiness (`/api/v1/ready`) endpoints
+- Explicit liveness (`/api/v1/health/live`) and persistence readiness (`/api/v1/health/ready`) endpoints
 - Docker production-demo image and local `compose.yaml` PostgreSQL stack
+- Local/remote production smoke check
 - Graceful database pool shutdown
 
 ## Development
@@ -70,14 +71,18 @@ The demo is then served on port `8787`.
 npm audit --audit-level=high
 npm test
 npm run build
+npm run smoke
+docker build -t gmvkasino:local .
 ```
 
-GitHub CI runs on Node 22, restores the npm cache from the committed lockfile, installs with `npm ci`, starts PostgreSQL, runs database integration tests, builds the production frontend and verifies that the Docker image builds successfully.
+GitHub CI runs on Node 22, restores the npm cache from the committed lockfile, installs with `npm ci`, starts PostgreSQL, runs database integration tests, builds the production frontend, executes the production smoke check and verifies that the Docker image builds successfully.
 
 ## API
 
-- `GET /api/v1/health` — process liveness
-- `GET /api/v1/ready` — storage readiness
+- `GET /api/v1/health/live` — process liveness
+- `GET /api/v1/health/ready` — storage readiness
+- `GET /api/v1/health` — readiness compatibility alias
+- `GET /api/v1/ready` — readiness compatibility alias
 - `GET /api/v1/games`
 - `POST /api/v1/session`
 - `GET /api/v1/session`
