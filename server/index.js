@@ -5,6 +5,7 @@ import { JsonSessionPersistence } from './jsonSessionPersistence.js'
 import { PostgresSessionStore } from './postgresSessionStore.js'
 import { SlidingWindowRateLimiter } from './rateLimiter.js'
 import { AuditLog } from './auditLog.js'
+import { OperationalMetrics } from './operationalMetrics.js'
 import { CasinoService } from './casinoService.js'
 import { createHttpServer } from './httpServer.js'
 
@@ -24,7 +25,7 @@ export function createPostgresPoolConfig(config = SERVER_CONFIG) {
   }
 }
 
-export async function createSessionStore(config = SERVER_CONFIG) {
+export async function createSessionStore(config = SERVER_CONFIG, { metrics = null } = {}) {
   if (config.databaseUrl) {
     const pool = new Pool(createPostgresPoolConfig(config))
     const store = new PostgresSessionStore({
@@ -32,6 +33,7 @@ export async function createSessionStore(config = SERVER_CONFIG) {
       startingBalance: config.startingBalance,
       idleTtlMs: config.sessionIdleTtlMs,
       absoluteTtlMs: config.sessionAbsoluteTtlMs,
+      metrics,
     })
     await store.init()
     return store
@@ -42,23 +44,26 @@ export async function createSessionStore(config = SERVER_CONFIG) {
     idleTtlMs: config.sessionIdleTtlMs,
     absoluteTtlMs: config.sessionAbsoluteTtlMs,
     persistence: new JsonSessionPersistence({ filePath: config.sessionStorePath }),
+    metrics,
   })
 }
 
 export async function createDefaultService(config = SERVER_CONFIG) {
+  const metrics = new OperationalMetrics()
   return new CasinoService({
-    sessionStore: await createSessionStore(config),
+    sessionStore: await createSessionStore(config, { metrics }),
     rateLimiter: new SlidingWindowRateLimiter({
       limit: config.rateLimitMaxSpins,
       windowMs: config.rateLimitWindowMs,
     }),
     auditLog: new AuditLog({ maxEvents: config.auditMaxEvents }),
+    metrics,
   })
 }
 
 export async function startServer(config = SERVER_CONFIG) {
   const service = await createDefaultService(config)
-  const server = createHttpServer({ service, config })
+  const server = createHttpServer({ service, config, metrics: service.metrics })
 
   server.listen(config.port, config.host, () => {
     console.log(`GMVKASINO M5 server listening on http://${config.host}:${config.port}`)
