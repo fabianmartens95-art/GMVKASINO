@@ -23,7 +23,7 @@ Central game catalog, persistent player display name, routing, deterministic RNG
 - API endpoints and production static serving
 - Service and HTTP smoke tests
 
-### M4 — Persistent Core
+### M4 — Persistent & Deployable Demo Core
 
 - Durable session repository adapter with atomic JSON-file persistence
 - Demo sessions and balances survive server restarts
@@ -37,7 +37,11 @@ Central game catalog, persistent player display name, routing, deterministic RNG
 - `X-Request-Id` tracing on HTTP responses
 - Structured HTTP request logs without session-token logging
 - Audit events use non-reversible session fingerprints rather than raw bearer tokens
-- Persistence, expiry, lifecycle and API request-tracing tests
+- Fail-fast validation for explicit runtime configuration
+- Production-style multi-stage Docker image on Node.js 20
+- Local/remote deployment smoke check
+- Supported Railway demo deployment with one replica and persistent `/data` volume
+- CI validates tests, frontend build, production smoke and Docker image build
 
 The JSON repository is intentionally transitional. It establishes a storage abstraction without introducing a native database dependency yet. A later milestone can replace it with SQLite/Postgres while keeping the casino service contract stable.
 
@@ -65,15 +69,32 @@ Vite proxies `/api` to `http://127.0.0.1:8787`.
 ```bash
 npm test
 npm run build
+npm run smoke
+docker build -t gmvkasino:local .
 ```
 
-GitHub CI runs on Node 20, restores the npm cache from the lockfile, installs with `npm ci`, then runs tests and the production build for pushes to `main` and pull requests.
+`npm run smoke` starts the production-style Node server locally when `SMOKE_BASE_URL` is not set and verifies both `/api/v1/health` and the built frontend. For an already deployed environment, run:
+
+```bash
+SMOKE_BASE_URL=https://<domain> npm run smoke
+```
+
+GitHub CI runs on Node 20, installs with `npm ci`, executes the automated tests, builds the frontend, runs the production smoke check and verifies that the Docker image builds.
 
 ## Production-style local demo
+
+Without Docker:
 
 ```bash
 npm run build
 npm start
+```
+
+With Docker:
+
+```bash
+docker build -t gmvkasino:local .
+docker run --rm -p 8787:8787 -e PORT=8787 gmvkasino:local
 ```
 
 The Node server serves both the built frontend and API from the same origin.
@@ -111,11 +132,32 @@ The server reads environment variables directly. `.env.example` documents the av
 
 The default idle TTL is 24 hours. Valid activity refreshes the idle timer. The default absolute TTL is seven days and is never extended by activity or token rotation. The legacy `DEMO_SESSION_TTL_MS` variable is still accepted as an idle-TTL fallback for compatibility.
 
-Local durable demo state defaults to `.data/demo-sessions.json` and is gitignored.
+Explicit malformed numeric runtime values fail startup instead of silently falling back. Local durable demo state defaults to `.data/demo-sessions.json` and is gitignored.
+
+## Deployment
+
+Railway is the supported hosting target for the current demo deployment. The JSON-backed build must run as **one replica** with a persistent Railway Volume mounted at `/data` and:
+
+```text
+DEMO_SESSION_STORE_PATH=/data/demo-sessions.json
+```
+
+Use `/api/v1/health` as the deployment healthcheck. After deployment, run the remote smoke check before considering the release verified.
+
+The full deployment, volume, rollback and secret-handling procedure is documented in [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
+
+This deployment model is not a production gambling architecture and is not intended for horizontal scaling. Replace the JSON persistence layer with a real shared database before multiple replicas or production identity are introduced.
 
 ## Architecture
 
 ```text
+Dockerfile
+scripts/
+└── smoke.mjs
+
+docs/
+└── DEPLOYMENT.md
+
 server/
 ├── auditLog.js
 ├── casinoService.js
@@ -138,6 +180,7 @@ src/
 tests/
 ├── casinoApi.test.js
 ├── clientSessionApi.test.js
+├── config.test.js
 ├── httpServer.test.js
 ├── sessionPersistence.test.js
 └── slotEngine.test.js
@@ -153,4 +196,4 @@ This is still not a real-money architecture. Before any monetary functionality, 
 
 ## Next milestone
 
-M5 should introduce a real database adapter behind the existing repository boundary, production authentication/identity, deployment/container configuration, health/readiness separation, metrics, secrets management and operational recovery procedures. Real-money functionality remains out of scope.
+M5 should replace transitional JSON persistence with a real database adapter, add production authentication/identity, separate liveness/readiness semantics, metrics and alerting, strengthen secret management, and define database migration/backup/recovery procedures. Real-money functionality remains out of scope.
