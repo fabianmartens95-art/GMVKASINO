@@ -8,8 +8,9 @@ The current M5 deployment expects:
 
 - repository-root `Dockerfile`
 - Node.js 22 runtime
-- `GET /api/v1/health` for process liveness
-- `GET /api/v1/ready` for storage readiness
+- `GET /api/v1/health/live` for process liveness
+- `GET /api/v1/health/ready` for persistence readiness and deployment health checks
+- compatibility readiness aliases at `GET /api/v1/health` and `GET /api/v1/ready`
 - `npm run smoke` for local or remote post-deploy verification
 - PostgreSQL as the preferred persistent store when `DATABASE_URL` is configured
 - JSON persistence only as a single-instance fallback
@@ -54,17 +55,21 @@ For a hosted JSON-backed demo, mount persistent storage and use an absolute path
 
 ## Health and verification
 
-Liveness:
+Liveness answers whether the Node process and HTTP server are alive. It intentionally does not depend on persistence:
 
 ```text
-GET /api/v1/health
+GET /api/v1/health/live
 ```
 
-Readiness:
+Readiness answers whether the active persistence backend is usable:
 
 ```text
-GET /api/v1/ready
+GET /api/v1/health/ready
 ```
+
+The compatibility endpoints `GET /api/v1/health` and `GET /api/v1/ready` currently use the same readiness semantics. New deployment configuration should use the explicit `/health/ready` path.
+
+A service can therefore be live but not ready. In that state, inspect PostgreSQL or JSON persistence availability before assuming that a process restart is the correct recovery action.
 
 Remote smoke check after deployment:
 
@@ -72,11 +77,11 @@ Remote smoke check after deployment:
 SMOKE_BASE_URL=https://<deployment-domain> npm run smoke
 ```
 
-The smoke check requires both the versioned health endpoint and the built frontend shell to respond successfully.
+The smoke check requires liveness, persistence readiness and the built frontend shell to respond successfully.
 
 ## Rollback
 
-If a deployment fails health, readiness, tests or the remote smoke check, do not promote it. Roll back to the most recent known-good image/revision, verify `/api/v1/health` and `/api/v1/ready`, then rerun the remote smoke check.
+If a deployment fails liveness, readiness, tests or the remote smoke check, do not promote it. Roll back to the most recent known-good image/revision, verify `/api/v1/health/live` and `/api/v1/health/ready`, then rerun the remote smoke check.
 
 Application rollback does not automatically roll back PostgreSQL data. Before future schema migrations, define backup, migration and rollback procedures explicitly.
 
