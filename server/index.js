@@ -10,7 +10,8 @@ export function createDefaultService(config = SERVER_CONFIG) {
   return new CasinoService({
     sessionStore: new SessionStore({
       startingBalance: config.startingBalance,
-      ttlMs: config.sessionTtlMs,
+      idleTtlMs: config.sessionIdleTtlMs,
+      absoluteTtlMs: config.sessionAbsoluteTtlMs,
       persistence: new JsonSessionPersistence({ filePath: config.sessionStorePath }),
     }),
     rateLimiter: new SlidingWindowRateLimiter({

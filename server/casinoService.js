@@ -1,6 +1,11 @@
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { GAMES, getGameById } from '../src/config/games.js'
 import { spin } from '../src/game/slotEngine.js'
+
+function sessionRef(sessionId) {
+  if (!sessionId) return null
+  return createHash('sha256').update(sessionId).digest('hex').slice(0, 16)
+}
 
 export class CasinoError extends Error {
   constructor(status, code, message, details = undefined) {
@@ -30,7 +35,7 @@ export class CasinoService {
   openSession({ sessionId, player } = {}) {
     const result = this.sessionStore.resumeOrCreate({ sessionId, player })
     this.auditLog.record(result.created ? 'session.created' : 'session.resumed', {
-      sessionId: result.session.id,
+      sessionRef: sessionRef(result.session.id),
       player: result.session.player || null,
       balance: result.session.balance,
     })
@@ -43,6 +48,31 @@ export class CasinoService {
       throw new CasinoError(401, 'SESSION_REQUIRED', 'Demo session is missing or expired')
     }
     return session
+  }
+
+  rotateSession(sessionId) {
+    const rotated = this.sessionStore.rotate(sessionId)
+    if (!rotated) {
+      throw new CasinoError(401, 'SESSION_REQUIRED', 'Demo session is missing or expired')
+    }
+
+    this.auditLog.record('session.rotated', {
+      previousSessionRef: sessionRef(sessionId),
+      sessionRef: sessionRef(rotated.id),
+      player: rotated.player || null,
+    })
+    return rotated
+  }
+
+  invalidateSession(sessionId) {
+    if (!this.sessionStore.invalidate(sessionId)) {
+      throw new CasinoError(401, 'SESSION_REQUIRED', 'Demo session is missing or expired')
+    }
+
+    this.auditLog.record('session.invalidated', {
+      sessionRef: sessionRef(sessionId),
+    })
+    return true
   }
 
   spin({ sessionId, gameId, bet }) {
@@ -79,7 +109,7 @@ export class CasinoService {
 
     this.auditLog.record('spin.resolved', {
       spinId,
-      sessionId: session.id,
+      sessionRef: sessionRef(session.id),
       gameId,
       bet,
       payout: result.totalWin,

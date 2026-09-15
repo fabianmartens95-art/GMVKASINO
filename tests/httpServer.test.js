@@ -7,7 +7,7 @@ import { AuditLog } from '../server/auditLog.js'
 import { CasinoService } from '../server/casinoService.js'
 import { createHttpServer, isPathWithin } from '../server/httpServer.js'
 
-function createTestServer() {
+function createTestServer({ log = () => {} } = {}) {
   const service = new CasinoService({
     sessionStore: new SessionStore({ startingBalance: 1000 }),
     rateLimiter: new SlidingWindowRateLimiter({ limit: 5, windowMs: 10_000 }),
@@ -23,7 +23,7 @@ function createTestServer() {
     service,
     config,
     staticDir: '/tmp/gmvkasino-no-static',
-    log: () => {},
+    log,
   })
 }
 
@@ -121,6 +121,78 @@ test('legacy API alias remains available during v1 migration', async () => {
     const response = await fetch(`${baseUrl}/api/health`)
     assert.equal(response.status, 200)
     assert.equal((await response.json()).apiVersion, 'v1')
+  } finally {
+    await close(server)
+  }
+})
+
+test('session rotation invalidates the previous bearer token and DELETE invalidates the replacement', async () => {
+  const server = createTestServer()
+  const baseUrl = await listen(server)
+
+  try {
+    const createResponse = await fetch(`${baseUrl}/api/v1/session`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ player: 'Lifecycle QA' }),
+    })
+    const { session: original } = await createResponse.json()
+
+    const rotateResponse = await fetch(`${baseUrl}/api/v1/session/rotate`, {
+      method: 'POST',
+      headers: { 'X-Demo-Session': original.id },
+    })
+    assert.equal(rotateResponse.status, 200)
+    const { session: rotated } = await rotateResponse.json()
+    assert.notEqual(rotated.id, original.id)
+    assert.equal(rotated.player, 'Lifecycle QA')
+
+    const oldTokenResponse = await fetch(`${baseUrl}/api/v1/session`, {
+      headers: { 'X-Demo-Session': original.id },
+    })
+    assert.equal(oldTokenResponse.status, 401)
+
+    const rotatedTokenResponse = await fetch(`${baseUrl}/api/v1/session`, {
+      headers: { 'X-Demo-Session': rotated.id },
+    })
+    assert.equal(rotatedTokenResponse.status, 200)
+
+    const invalidateResponse = await fetch(`${baseUrl}/api/v1/session`, {
+      method: 'DELETE',
+      headers: { 'X-Demo-Session': rotated.id },
+    })
+    assert.equal(invalidateResponse.status, 200)
+    assert.equal((await invalidateResponse.json()).invalidated, true)
+
+    const invalidatedResponse = await fetch(`${baseUrl}/api/v1/session`, {
+      headers: { 'X-Demo-Session': rotated.id },
+    })
+    assert.equal(invalidatedResponse.status, 401)
+  } finally {
+    await close(server)
+  }
+})
+
+test('structured HTTP request logs never contain the bearer session token', async () => {
+  const logs = []
+  const server = createTestServer({ log: (entry) => logs.push(entry) })
+  const baseUrl = await listen(server)
+
+  try {
+    const createResponse = await fetch(`${baseUrl}/api/v1/session`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ player: 'Log QA' }),
+    })
+    const { session } = await createResponse.json()
+
+    const sessionResponse = await fetch(`${baseUrl}/api/v1/session`, {
+      headers: { 'X-Demo-Session': session.id },
+    })
+    assert.equal(sessionResponse.status, 200)
+
+    assert.ok(logs.length >= 2)
+    assert.equal(logs.some((entry) => entry.includes(session.id)), false)
   } finally {
     await close(server)
   }
