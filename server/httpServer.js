@@ -86,6 +86,7 @@ export function normalizeMetricRoute(apiPath) {
   const known = new Set([
     '/health/live',
     '/games',
+    '/wallet',
     '/session',
     '/session/rotate',
     '/spin',
@@ -202,7 +203,7 @@ export function createHttpServer({ service, config, staticDir = DEFAULT_STATIC_D
           ok: true,
           status: 'live',
           mode: 'demo',
-          milestone: 'M5',
+          milestone: 'M6',
           apiVersion: 'v1',
           requestId,
         })
@@ -216,7 +217,7 @@ export function createHttpServer({ service, config, staticDir = DEFAULT_STATIC_D
             ok: true,
             status: 'ready',
             mode: 'demo',
-            milestone: 'M5',
+            milestone: 'M6',
             apiVersion: 'v1',
             persistence: readiness?.backend || 'unknown',
             requestId,
@@ -226,7 +227,7 @@ export function createHttpServer({ service, config, staticDir = DEFAULT_STATIC_D
             ok: false,
             status: 'not_ready',
             mode: 'demo',
-            milestone: 'M5',
+            milestone: 'M6',
             apiVersion: 'v1',
             requestId,
           })
@@ -236,6 +237,12 @@ export function createHttpServer({ service, config, staticDir = DEFAULT_STATIC_D
 
       if (apiPath === '/games' && req.method === 'GET') {
         sendJson(res, 200, { games: service.getGames(), requestId })
+        return
+      }
+
+      if (apiPath === '/wallet' && req.method === 'GET') {
+        const wallet = await service.getWallet(sessionIdFrom(req))
+        sendJson(res, 200, { wallet, requestId })
         return
       }
 
