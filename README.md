@@ -14,30 +14,27 @@ Central game catalog, persistent player display name, routing, deterministic RNG
 
 ### M3 — Server Core ✅
 
-- Node HTTP server
-- Server-owned demo sessions and balances
-- Server-side spin settlement
-- Allowed-bet and insufficient-credit validation
-- Per-session rate limiting
-- Structured audit logging
-- API endpoints and production static serving
-- Service and HTTP smoke tests
+Server-owned demo sessions/balances, server-side spin settlement, bet/funds validation, rate limiting, audit logging and HTTP smoke coverage.
 
-### M4 — Persistent Core
+### M4 — Persistent Core ✅
 
-- Durable session repository adapter with atomic JSON-file persistence
-- Demo sessions and balances survive server restarts
-- 256-bit random demo session tokens
-- Versioned `/api/v1` contract
-- Temporary legacy `/api/*` compatibility aliases
-- `X-Request-Id` tracing on HTTP responses
-- Structured HTTP request logs without session-token logging
-- Persistence restart/expiry tests
-- API v1 request-tracing tests
+Durable JSON session persistence, 256-bit demo session tokens, `/api/v1`, request IDs, structured HTTP logs and persistence/restart tests.
 
-The JSON repository is intentionally transitional. It establishes a storage abstraction without introducing a native database dependency yet. A later milestone can replace it with SQLite/Postgres while keeping the casino service contract stable.
+### M5 — PostgreSQL & Operations
+
+- Optional PostgreSQL-backed demo session store via `DATABASE_URL`
+- JSON persistence retained as a local fallback when no database URL is configured
+- Atomic conditional PostgreSQL settlement to prevent concurrent overspend
+- Async storage contract while keeping the casino service API stable
+- Real PostgreSQL integration tests in GitHub CI
+- Separate liveness (`/api/v1/health`) and readiness (`/api/v1/ready`) endpoints
+- Docker production-demo image
+- Local `compose.yaml` stack with PostgreSQL health checks
+- Graceful database pool shutdown
 
 ## Development
+
+Without PostgreSQL, the local JSON persistence fallback still works:
 
 ```bash
 npm install
@@ -50,7 +47,13 @@ In a second terminal:
 npm run dev
 ```
 
-Vite proxies `/api` to `http://127.0.0.1:8787`.
+With PostgreSQL and the containerized app:
+
+```bash
+docker compose up --build
+```
+
+The demo is then served on port `8787`.
 
 ## Validation
 
@@ -59,44 +62,36 @@ npm test
 npm run build
 ```
 
-GitHub CI runs tests and the production build for pushes to `main` and pull requests.
-
-## Production-style local demo
-
-```bash
-npm run build
-npm start
-```
-
-The Node server serves both the built frontend and API from the same origin.
+GitHub CI additionally starts PostgreSQL and runs the database integration tests before the production frontend build.
 
 ## API
 
-Preferred M4 endpoints:
-
-- `GET /api/v1/health`
+- `GET /api/v1/health` — process liveness
+- `GET /api/v1/ready` — storage readiness
 - `GET /api/v1/games`
 - `POST /api/v1/session`
 - `GET /api/v1/session`
 - `POST /api/v1/spin`
 
-Every HTTP response receives an `X-Request-Id`. The frontend uses `/api/v1`; the prior unversioned routes remain temporary aliases.
+Every HTTP response receives an `X-Request-Id`. Temporary legacy `/api/*` aliases remain available during migration.
 
 ## Environment
 
-The server reads environment variables directly. `.env.example` documents the available values, including:
+See `.env.example`. Key settings include:
 
 - `HOST`
 - `PORT`
 - `DEMO_STARTING_BALANCE`
 - `DEMO_SESSION_TTL_MS`
 - `DEMO_SESSION_STORE_PATH`
+- `DATABASE_URL`
+- `DATABASE_SSL`
 - `SPIN_RATE_LIMIT_WINDOW_MS`
 - `SPIN_RATE_LIMIT_MAX`
 - `MAX_JSON_BODY_BYTES`
 - `AUDIT_MAX_EVENTS`
 
-Local durable demo state defaults to `.data/demo-sessions.json` and is gitignored.
+When `DATABASE_URL` is set, the server initializes and uses PostgreSQL. Otherwise it uses the JSON repository at `.data/demo-sessions.json`.
 
 ## Architecture
 
@@ -108,6 +103,7 @@ server/
 ├── httpServer.js
 ├── index.js
 ├── jsonSessionPersistence.js
+├── postgresSessionStore.js
 ├── rateLimiter.js
 └── sessionStore.js
 
@@ -122,17 +118,19 @@ src/
 
 tests/
 ├── casinoApi.test.js
+├── httpServer.edge.test.js
 ├── httpServer.test.js
+├── postgresSessionStore.test.js
 ├── sessionPersistence.test.js
 └── slotEngine.test.js
 ```
 
 ## Security boundary
 
-The browser cannot settle spins or credit itself. It submits a game ID and allowed bet; the server validates the demo session, balance, game configuration and rate limit, resolves the spin, persists the resulting demo balance, records audit data and returns the authoritative result.
+The browser cannot settle spins or credit itself. The server validates the demo session, game, allowed bet, current balance and rate limit. With PostgreSQL, the balance update is conditional and atomic so concurrent requests cannot both spend the same remaining demo credit.
 
-This is still not a real-money architecture. Before any monetary functionality, the project would require a separate legal/compliance decision and production-grade identity, database/ledger design, certified game/RNG requirements where applicable, geofencing, AML/KYC, responsible-gambling controls, monitoring, secrets management and infrastructure hardening.
+This is still not a real-money architecture. Before any monetary functionality, the project would require a separate legal/compliance decision and production-grade identity, financial ledger design, certified game/RNG requirements where applicable, geofencing, AML/KYC, responsible-gambling controls, monitoring, secrets management and infrastructure hardening.
 
 ## Next milestone
 
-M5 should introduce a real database adapter behind the existing repository boundary, stronger authentication/session lifecycle controls, deployment/container configuration, health/readiness separation, metrics, and operational recovery procedures. Real-money functionality remains out of scope.
+M6 should focus on authenticated accounts, session rotation/revocation, database migrations instead of runtime schema creation, metrics/alerts, backup/restore procedures and a staging deployment. Real-money functionality remains out of scope.
