@@ -13,9 +13,7 @@ function delay(ms) {
 
 async function assertHealth(baseUrl, path, expectedStatus) {
   const response = await fetch(`${baseUrl}${path}`)
-  if (!response.ok) {
-    throw new Error(`${path} failed with HTTP ${response.status}`)
-  }
+  if (!response.ok) throw new Error(`${path} failed with HTTP ${response.status}`)
 
   const payload = await response.json()
   if (
@@ -35,9 +33,7 @@ async function assertDeployment(baseUrl) {
   await assertHealth(baseUrl, '/api/v1/health/ready', 'ready')
 
   const frontendResponse = await fetch(`${baseUrl}/`)
-  if (!frontendResponse.ok) {
-    throw new Error(`Frontend smoke check failed with HTTP ${frontendResponse.status}`)
-  }
+  if (!frontendResponse.ok) throw new Error(`Frontend smoke check failed with HTTP ${frontendResponse.status}`)
 
   const contentType = frontendResponse.headers.get('content-type') || ''
   const html = await frontendResponse.text()
@@ -54,25 +50,20 @@ async function waitUntilReady(baseUrl, child) {
     if (child.exitCode !== null) {
       throw new Error(`GMVKASINO server exited before becoming ready (code ${child.exitCode})`)
     }
-
     try {
       const response = await fetch(`${baseUrl}/api/v1/health/ready`)
       if (response.ok) return
     } catch (error) {
       lastError = error
     }
-
     await delay(250)
   }
-
   throw lastError || new Error('GMVKASINO server did not become ready in time')
 }
 
 async function runLocalSmoke() {
   const port = Number(process.env.SMOKE_PORT || 8790)
-  if (!Number.isInteger(port) || port <= 0 || port > 65_535) {
-    throw new Error('SMOKE_PORT must be a valid TCP port')
-  }
+  if (!Number.isInteger(port) || port <= 0 || port > 65_535) throw new Error('SMOKE_PORT must be a valid TCP port')
 
   const directory = mkdtempSync(join(tmpdir(), 'gmvkasino-smoke-'))
   const baseUrl = `http://127.0.0.1:${port}`
@@ -83,6 +74,8 @@ async function runLocalSmoke() {
       ...process.env,
       HOST: '127.0.0.1',
       PORT: String(port),
+      DATABASE_URL: '',
+      DATABASE_SSL: 'false',
       DEMO_SESSION_STORE_PATH: join(directory, 'demo-sessions.json'),
     },
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -107,8 +100,5 @@ async function runLocalSmoke() {
   }
 }
 
-if (remoteBaseUrl) {
-  await assertDeployment(remoteBaseUrl)
-} else {
-  await runLocalSmoke()
-}
+if (remoteBaseUrl) await assertDeployment(remoteBaseUrl)
+else await runLocalSmoke()

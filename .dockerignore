@@ -1,8 +1,8 @@
 node_modules
 dist
+.data
 .git
 .github
-.data
 .env
 .env.*
 !.env.example

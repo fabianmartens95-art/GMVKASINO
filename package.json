@@ -1,7 +1,7 @@
 {
   "name": "gmvkasino",
   "private": true,
-  "version": "0.3.0",
+  "version": "0.4.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -13,10 +13,11 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "pg": "8.23.0",
     "react": "18.3.1",
     "react-dom": "18.3.1"
   },
   "devDependencies": {
-    "vite": "5.4.10"
+    "vite": "6.4.3"
   }
 }

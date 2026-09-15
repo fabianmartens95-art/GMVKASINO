@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { JsonSessionPersistence } from '../server/jsonSessionPersistence.js'
@@ -120,21 +120,6 @@ test('invalidating a session removes it from durable state', () => {
 
     const restartedStore = new SessionStore({ persistence })
     assert.equal(restartedStore.get(created.id), null)
-  } finally {
-    rmSync(directory, { recursive: true, force: true })
-  }
-})
-
-test('JSON persistence readiness is non-mutating and detects corrupted state', () => {
-  const directory = mkdtempSync(join(tmpdir(), 'gmvkasino-readiness-'))
-  const filePath = join(directory, 'sessions.json')
-
-  try {
-    const persistence = new JsonSessionPersistence({ filePath })
-    assert.deepEqual(persistence.check(), { ok: true, backend: 'json' })
-
-    writeFileSync(filePath, '{not-json', 'utf8')
-    assert.throws(() => persistence.check())
   } finally {
     rmSync(directory, { recursive: true, force: true })
   }

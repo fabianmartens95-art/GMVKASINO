@@ -1,50 +1,40 @@
-# GMVKASINO Demo Deployment — Railway
+# GMVKASINO Demo Deployment
 
-Railway is the supported deployment target for the current GMVKASINO demo. This document applies only to the non-monetary demo architecture. It does not make the project suitable for real-money gambling.
+This document applies only to the non-monetary GMVKASINO demo. It does not make the project suitable for real-money gambling.
 
 ## Deployment contract
 
-The supported deployment has these properties:
+The current M5 deployment expects:
 
-- source: GitHub `main` branch
-- build/runtime: repository-root `Dockerfile`
-- runtime: Node.js 20 container
-- process: one web-service replica
-- persistence: one Railway Volume mounted at `/data`
-- demo session store: `/data/demo-sessions.json`
-- liveness endpoint: `GET /api/v1/health/live`
-- readiness/deployment healthcheck: `GET /api/v1/health/ready`
-- compatibility health alias: `GET /api/v1/health` (same readiness semantics)
-- post-deploy verification: `SMOKE_BASE_URL=https://<domain> npm run smoke`
+- repository-root `Dockerfile`
+- Node.js 22 runtime
+- `GET /api/v1/health/live` for process liveness
+- `GET /api/v1/health/ready` for persistence readiness and deployment health checks
+- compatibility readiness aliases at `GET /api/v1/health` and `GET /api/v1/ready`
+- `npm run smoke` for local or remote post-deploy verification
+- PostgreSQL as the preferred persistent store when `DATABASE_URL` is configured
+- JSON persistence only as a single-instance fallback
 
-Do not horizontally scale this JSON-backed version. The current repository layer is a transitional single-process persistence mechanism. Multi-replica deployment requires a real shared database adapter first.
-
-## First deployment
-
-1. Create a Railway project and add a service from the GMVKASINO GitHub repository.
-2. Select the `main` branch. Railway should detect the root `Dockerfile` automatically.
-3. Add a persistent Volume to the service and mount it at `/data`.
-4. Set `DEMO_SESSION_STORE_PATH=/data/demo-sessions.json`.
-5. Keep one service replica while the JSON repository is in use.
-6. Generate a public domain for the service.
-7. Configure the Railway deployment healthcheck path as `/api/v1/health/ready`.
-8. Deploy and wait for the readiness healthcheck to succeed.
-9. From a trusted machine, run the remote smoke check:
+## Pre-deploy gate
 
 ```bash
-SMOKE_BASE_URL=https://<railway-domain> npm run smoke
+npm ci
+npm audit --audit-level=high
+npm test
+npm run build
+npm run smoke
+docker build -t gmvkasino:local .
 ```
 
-The smoke check requires liveness, persistence readiness and the built frontend shell to respond successfully.
+CI runs the same core gates and additionally executes PostgreSQL integration tests against an ephemeral PostgreSQL service.
 
-## Runtime variables
+## PostgreSQL deployment
 
-Railway supplies `PORT` to the running service. The application defaults to `HOST=0.0.0.0` and reads the injected port.
-
-Recommended explicit variables for the demo:
+Configure at minimum:
 
 ```text
-DEMO_SESSION_STORE_PATH=/data/demo-sessions.json
+DATABASE_URL=<postgres connection string>
+DATABASE_SSL=true|false
 DEMO_SESSION_IDLE_TTL_MS=86400000
 DEMO_SESSION_ABSOLUTE_TTL_MS=604800000
 SPIN_RATE_LIMIT_WINDOW_MS=10000
@@ -53,94 +43,52 @@ MAX_JSON_BODY_BYTES=16384
 AUDIT_MAX_EVENTS=1000
 ```
 
-`DEMO_STARTING_BALANCE` may be set if a different demo-credit starting balance is needed.
+If the database uses a private CA, provide `DATABASE_SSL_CA`. When `DATABASE_SSL=true`, certificate verification remains enabled.
 
-The server validates configured numeric values at startup and exits on malformed values rather than silently replacing them with defaults.
+The current PostgreSQL store creates its demo-session table and indexes during startup. M6 should replace runtime schema creation with explicit versioned migrations before staging is treated as release-grade.
 
-## Persistence and volume rules
+## JSON fallback
 
-- The Railway Volume is runtime storage. It is not available during the Docker image build.
-- Never commit `.data`, `.env`, tokens, or Railway secrets to GitHub.
-- Mount the volume at `/data` and use the absolute session-store path above.
-- Keep one replica until the JSON repository is replaced by a database.
-- A code rollback does not roll back the contents of the mounted volume.
-- Before any future persistence-schema migration, take a volume backup and define a migration/rollback procedure first.
+Without `DATABASE_URL`, the server uses `DEMO_SESSION_STORE_PATH`, defaulting to `.data/demo-sessions.json`.
 
-Because an attached volume cannot be mounted by old and new deployments simultaneously, redeploys can involve a short service interruption. Do not describe this demo deployment as zero-downtime.
-
-## Health semantics
-
-`GET /api/v1/health/live` answers whether the Node process and HTTP server are alive. It intentionally does not depend on the persistence layer.
-
-`GET /api/v1/health/ready` answers whether the service can safely serve requests that depend on persistence. The current JSON adapter checks that its existing state is readable and structurally valid and that the backing location is writable. It does not create or modify player state during the readiness probe.
-
-The compatibility endpoint `GET /api/v1/health` currently has the same readiness semantics. New deployment configuration should use the explicit `/health/ready` path.
-
-A service can therefore be **live but not ready**. In that condition, restart loops are not automatically assumed to be the right recovery action; inspect persistence/volume availability first.
+For a hosted JSON-backed demo, mount persistent storage and use an absolute path. Keep exactly one application replica. Do not horizontally scale the JSON-backed mode.
 
 ## Health and verification
 
-Local production-style validation:
+Liveness answers whether the Node process and HTTP server are alive. It intentionally does not depend on persistence:
 
-```bash
-npm ci
-npm test
-npm run build
-npm run smoke
-docker build -t gmvkasino:local .
+```text
+GET /api/v1/health/live
 ```
 
-Remote validation after a Railway deployment:
+Readiness answers whether the active persistence backend is usable:
 
-```bash
-SMOKE_BASE_URL=https://<railway-domain> npm run smoke
+```text
+GET /api/v1/health/ready
 ```
 
-Expected liveness payload characteristics:
+The compatibility endpoints `GET /api/v1/health` and `GET /api/v1/ready` currently use the same readiness semantics. New deployment configuration should use the explicit `/health/ready` path.
 
-- HTTP 2xx
-- `ok: true`
-- `status: "live"`
-- `mode: "demo"`
-- `apiVersion: "v1"`
+A service can therefore be live but not ready. In that state, inspect PostgreSQL or JSON persistence availability before assuming that a process restart is the correct recovery action.
 
-Expected readiness payload characteristics:
+Remote smoke check after deployment:
 
-- HTTP 2xx when ready, HTTP 503 when not ready
-- `ok: true` and `status: "ready"` when persistence is available
-- `ok: false` and `status: "not_ready"` when persistence is unavailable/corrupt
-- no connection strings, file contents or secret values in the response
+```bash
+SMOKE_BASE_URL=https://<deployment-domain> npm run smoke
+```
 
-The frontend root `/` must return the built HTML application shell.
+The smoke check requires liveness, persistence readiness and the built frontend shell to respond successfully.
 
-## Rollback procedure
+## Rollback
 
-If a deployment fails the Railway readiness healthcheck, do not promote it.
+If a deployment fails liveness, readiness, tests or the remote smoke check, do not promote it. Roll back to the most recent known-good image/revision, verify `/api/v1/health/live` and `/api/v1/health/ready`, then rerun the remote smoke check.
 
-If a bad deployment is already active:
-
-1. Open the service deployment history.
-2. Select the most recent known-good deployment.
-3. Use Railway's rollback action.
-4. Confirm `/api/v1/health/live` and `/api/v1/health/ready`.
-5. Run the remote smoke check against the public domain.
-6. Review logs and open a GitHub issue describing the failed deployment before retrying.
-
-Remember that the persistent Volume remains current during an application rollback. If a future release changes persisted data, application rollback alone may be insufficient.
+Application rollback does not automatically roll back PostgreSQL data. Before future schema migrations, define backup, migration and rollback procedures explicitly.
 
 ## Secrets
 
-No secrets are required by the current demo server. If secrets are introduced later, inject them through Railway Variables or the selected secret-management layer. Do not place secret values in `.env.example`, GitHub, Docker build arguments, frontend code, logs, or documentation.
+Do not commit database URLs, CA material, tokens or deployment credentials. Inject them through the hosting platform's secret/environment-variable mechanism. Never place bearer session tokens or secrets in URLs, frontend code, Docker build arguments, logs or documentation.
 
-## Exit criteria for this deployment model
+## Exit criteria before higher-risk operation
 
-Move away from the single-replica JSON deployment before any of the following:
-
-- multi-replica or multi-region scaling
-- production user accounts
-- financial ledger or money movement
-- deposits or withdrawals
-- real-money wagering
-- production KYC/AML controls
-
-Those changes require a database-backed architecture and a separate legal/compliance decision.
+A separate architecture and legal/compliance decision is required before introducing production user identity tied to money, financial ledgers, deposits, withdrawals, real-money wagering, production KYC/AML or multi-region operation.

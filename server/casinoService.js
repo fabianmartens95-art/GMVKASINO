@@ -26,7 +26,15 @@ export class CasinoService {
   }
 
   async checkReadiness() {
-    return this.sessionStore.checkReadiness()
+    if (typeof this.sessionStore.checkReadiness === 'function') {
+      return this.sessionStore.checkReadiness()
+    }
+    if (typeof this.sessionStore.ready === 'function') {
+      const ready = await this.sessionStore.ready()
+      if (!ready) throw new Error('Session store is not ready')
+      return { ok: true, backend: 'unknown' }
+    }
+    return { ok: true, backend: 'memory' }
   }
 
   getGames() {
@@ -36,8 +44,8 @@ export class CasinoService {
     }))
   }
 
-  openSession({ sessionId, player } = {}) {
-    const result = this.sessionStore.resumeOrCreate({ sessionId, player })
+  async openSession({ sessionId, player } = {}) {
+    const result = await this.sessionStore.resumeOrCreate({ sessionId, player })
     this.auditLog.record(result.created ? 'session.created' : 'session.resumed', {
       sessionRef: sessionRef(result.session.id),
       player: result.session.player || null,
@@ -46,16 +54,16 @@ export class CasinoService {
     return result.session
   }
 
-  getSession(sessionId) {
-    const session = this.sessionStore.get(sessionId)
+  async getSession(sessionId) {
+    const session = await this.sessionStore.get(sessionId)
     if (!session) {
       throw new CasinoError(401, 'SESSION_REQUIRED', 'Demo session is missing or expired')
     }
     return session
   }
 
-  rotateSession(sessionId) {
-    const rotated = this.sessionStore.rotate(sessionId)
+  async rotateSession(sessionId) {
+    const rotated = await this.sessionStore.rotate(sessionId)
     if (!rotated) {
       throw new CasinoError(401, 'SESSION_REQUIRED', 'Demo session is missing or expired')
     }
@@ -68,8 +76,8 @@ export class CasinoService {
     return rotated
   }
 
-  invalidateSession(sessionId) {
-    if (!this.sessionStore.invalidate(sessionId)) {
+  async invalidateSession(sessionId) {
+    if (!await this.sessionStore.invalidate(sessionId)) {
       throw new CasinoError(401, 'SESSION_REQUIRED', 'Demo session is missing or expired')
     }
 
@@ -79,8 +87,8 @@ export class CasinoService {
     return true
   }
 
-  spin({ sessionId, gameId, bet }) {
-    const session = this.getSession(sessionId)
+  async spin({ sessionId, gameId, bet }) {
+    const session = await this.getSession(sessionId)
     const game = getGameById(gameId)
 
     if (!game || game.status !== 'playable') {
@@ -105,10 +113,15 @@ export class CasinoService {
     }
 
     const result = spin(bet, this.rng)
-    const updatedSession = this.sessionStore.applySpin(session.id, {
+    const updatedSession = await this.sessionStore.applySpin(session.id, {
       bet,
       payout: result.totalWin,
     })
+
+    if (!updatedSession) {
+      throw new CasinoError(409, 'INSUFFICIENT_DEMO_CREDITS', 'Demo balance changed before settlement')
+    }
+
     const spinId = randomUUID()
 
     this.auditLog.record('spin.resolved', {
@@ -128,6 +141,17 @@ export class CasinoService {
       ...result,
       balance: updatedSession.balance,
       spins: updatedSession.spins,
+    }
+  }
+
+  async ready() {
+    await this.checkReadiness()
+    return true
+  }
+
+  async close() {
+    if (typeof this.sessionStore.close === 'function') {
+      await this.sessionStore.close()
     }
   }
 }
