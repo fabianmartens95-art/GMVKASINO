@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto'
+import { randomUUID, timingSafeEqual } from 'node:crypto'
 import { createServer } from 'node:http'
 import { readFile } from 'node:fs/promises'
 import { extname, isAbsolute, join, relative, resolve, sep } from 'node:path'
@@ -79,6 +79,35 @@ function normalizeApiPath(pathname) {
   return null
 }
 
+export function normalizeMetricRoute(apiPath) {
+  if (apiPath === null) return '/frontend'
+  if (apiPath === '/health' || apiPath === '/ready' || apiPath === '/health/ready') return '/api/v1/health/ready'
+
+  const known = new Set([
+    '/health/live',
+    '/games',
+    '/session',
+    '/session/rotate',
+    '/spin',
+    '/internal/metrics',
+  ])
+  return known.has(apiPath) ? `/api/v1${apiPath}` : '/api/v1/other'
+}
+
+function bearerToken(req) {
+  const raw = req.headers.authorization
+  const value = Array.isArray(raw) ? raw[0] : raw
+  if (typeof value !== 'string' || !value.startsWith('Bearer ')) return ''
+  return value.slice('Bearer '.length).trim()
+}
+
+function tokenMatches(provided, expected) {
+  if (!provided || !expected) return false
+  const a = Buffer.from(provided)
+  const b = Buffer.from(expected)
+  return a.length === b.length && timingSafeEqual(a, b)
+}
+
 export function isPathWithin(rootPath, targetPath) {
   const root = resolve(rootPath)
   const target = resolve(targetPath)
@@ -123,7 +152,7 @@ async function serveStatic(res, pathname, staticDir) {
   }
 }
 
-export function createHttpServer({ service, config, staticDir = DEFAULT_STATIC_DIR, log = console.log } = {}) {
+export function createHttpServer({ service, config, staticDir = DEFAULT_STATIC_DIR, log = console.log, metrics = service?.metrics } = {}) {
   if (!service) throw new Error('service is required')
   if (!config) throw new Error('config is required')
 
@@ -133,20 +162,41 @@ export function createHttpServer({ service, config, staticDir = DEFAULT_STATIC_D
     const url = new URL(req.url || '/', 'http://localhost')
     const pathname = url.pathname
     const apiPath = normalizeApiPath(pathname)
+    const metricRoute = normalizeMetricRoute(apiPath)
 
     res.setHeader('X-Request-Id', requestId)
     res.once('finish', () => {
+      const durationMs = Date.now() - startedAt
+      metrics?.recordRequest?.({
+        route: metricRoute,
+        method: req.method,
+        status: res.statusCode,
+        durationMs,
+      })
       log(JSON.stringify({
         scope: 'gmvkasino.http',
         requestId,
         method: req.method,
         path: pathname,
         status: res.statusCode,
-        durationMs: Date.now() - startedAt,
+        durationMs,
       }))
     })
 
     try {
+      if (apiPath === '/internal/metrics' && req.method === 'GET') {
+        if (!config.metricsToken) {
+          sendJson(res, 404, { error: { code: 'API_NOT_FOUND', message: 'API route not found', requestId } })
+          return
+        }
+        if (!tokenMatches(bearerToken(req), config.metricsToken)) {
+          sendJson(res, 401, { error: { code: 'METRICS_UNAUTHORIZED', message: 'Unauthorized', requestId } })
+          return
+        }
+        sendJson(res, 200, { metrics: metrics?.snapshot?.() || null, requestId })
+        return
+      }
+
       if (apiPath === '/health/live' && req.method === 'GET') {
         sendJson(res, 200, {
           ok: true,
