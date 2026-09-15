@@ -1,0 +1,1 @@
+M3 introduces the demo server boundary, server-owned sessions/balances, server-side spin settlement, rate limiting, structured audit logging, frontend API integration, and HTTP/service tests. Real-money functionality remains out of scope.
