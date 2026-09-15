@@ -112,7 +112,7 @@ export async function registerAccount({ email, password, displayName = '' }) {
   const payload = await request('/auth/register', {
     method: 'POST',
     body: { email, password, displayName },
-    includeSession: false,
+    includeSession: true,
     includeAuth: false,
   })
   writeAuthToken(payload.auth.token)
