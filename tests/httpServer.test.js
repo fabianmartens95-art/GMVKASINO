@@ -52,7 +52,7 @@ test('static path containment accepts children and rejects parent or sibling esc
   )
 })
 
-test('API v1 creates a session and resolves a server-side spin with request IDs', async () => {
+test('API v1 exposes liveness and readiness separately', async () => {
   const server = createTestServer()
   const baseUrl = await listen(server)
 
@@ -63,8 +63,21 @@ test('API v1 creates a session and resolves a server-side spin with request IDs'
     const health = await healthResponse.json()
     assert.equal(health.mode, 'demo')
     assert.equal(health.apiVersion, 'v1')
-    assert.equal(health.milestone, 'M4')
+    assert.equal(health.milestone, 'M5')
 
+    const readyResponse = await fetch(`${baseUrl}/api/v1/ready`)
+    assert.equal(readyResponse.status, 200)
+    assert.equal((await readyResponse.json()).ok, true)
+  } finally {
+    await close(server)
+  }
+})
+
+test('API v1 creates a session and resolves a server-side spin with request IDs', async () => {
+  const server = createTestServer()
+  const baseUrl = await listen(server)
+
+  try {
     const sessionResponse = await fetch(`${baseUrl}/api/v1/session`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
