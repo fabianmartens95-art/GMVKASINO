@@ -30,7 +30,8 @@ export async function createSessionStore(config = SERVER_CONFIG) {
     const store = new PostgresSessionStore({
       pool,
       startingBalance: config.startingBalance,
-      ttlMs: config.sessionTtlMs,
+      idleTtlMs: config.sessionIdleTtlMs,
+      absoluteTtlMs: config.sessionAbsoluteTtlMs,
     })
     await store.init()
     return store
@@ -38,7 +39,8 @@ export async function createSessionStore(config = SERVER_CONFIG) {
 
   return new SessionStore({
     startingBalance: config.startingBalance,
-    ttlMs: config.sessionTtlMs,
+    idleTtlMs: config.sessionIdleTtlMs,
+    absoluteTtlMs: config.sessionAbsoluteTtlMs,
     persistence: new JsonSessionPersistence({ filePath: config.sessionStorePath }),
   })
 }
