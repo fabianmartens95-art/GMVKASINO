@@ -18,15 +18,20 @@ export class CasinoError extends Error {
 }
 
 export class CasinoService {
-  constructor({ sessionStore, rateLimiter, auditLog, rng } = {}) {
-    this.sessionStore = sessionStore
+  constructor({ sessionRepository, sessionStore, rateLimiter, auditLog, rng } = {}) {
+    this.sessionRepository = sessionRepository || sessionStore
+    if (!this.sessionRepository) throw new Error('sessionRepository is required')
     this.rateLimiter = rateLimiter
     this.auditLog = auditLog
     this.rng = rng
   }
 
   async checkReadiness() {
-    return this.sessionStore.checkReadiness()
+    return this.sessionRepository.checkReadiness()
+  }
+
+  async close() {
+    await this.sessionRepository.close?.()
   }
 
   getGames() {
@@ -36,8 +41,8 @@ export class CasinoService {
     }))
   }
 
-  openSession({ sessionId, player } = {}) {
-    const result = this.sessionStore.resumeOrCreate({ sessionId, player })
+  async openSession({ sessionId, player } = {}) {
+    const result = await this.sessionRepository.resumeOrCreate({ sessionId, player })
     this.auditLog.record(result.created ? 'session.created' : 'session.resumed', {
       sessionRef: sessionRef(result.session.id),
       player: result.session.player || null,
@@ -46,16 +51,16 @@ export class CasinoService {
     return result.session
   }
 
-  getSession(sessionId) {
-    const session = this.sessionStore.get(sessionId)
+  async getSession(sessionId) {
+    const session = await this.sessionRepository.get(sessionId)
     if (!session) {
       throw new CasinoError(401, 'SESSION_REQUIRED', 'Demo session is missing or expired')
     }
     return session
   }
 
-  rotateSession(sessionId) {
-    const rotated = this.sessionStore.rotate(sessionId)
+  async rotateSession(sessionId) {
+    const rotated = await this.sessionRepository.rotate(sessionId)
     if (!rotated) {
       throw new CasinoError(401, 'SESSION_REQUIRED', 'Demo session is missing or expired')
     }
@@ -68,8 +73,8 @@ export class CasinoService {
     return rotated
   }
 
-  invalidateSession(sessionId) {
-    if (!this.sessionStore.invalidate(sessionId)) {
+  async invalidateSession(sessionId) {
+    if (!await this.sessionRepository.invalidate(sessionId)) {
       throw new CasinoError(401, 'SESSION_REQUIRED', 'Demo session is missing or expired')
     }
 
@@ -79,8 +84,8 @@ export class CasinoService {
     return true
   }
 
-  spin({ sessionId, gameId, bet }) {
-    const session = this.getSession(sessionId)
+  async spin({ sessionId, gameId, bet }) {
+    const session = await this.getSession(sessionId)
     const game = getGameById(gameId)
 
     if (!game || game.status !== 'playable') {
@@ -105,10 +110,19 @@ export class CasinoService {
     }
 
     const result = spin(bet, this.rng)
-    const updatedSession = this.sessionStore.applySpin(session.id, {
+    const settlement = await this.sessionRepository.settleSpin(session.id, {
       bet,
       payout: result.totalWin,
     })
+
+    if (settlement.status === 'missing') {
+      throw new CasinoError(401, 'SESSION_REQUIRED', 'Demo session is missing or expired')
+    }
+    if (settlement.status === 'insufficient') {
+      throw new CasinoError(409, 'INSUFFICIENT_DEMO_CREDITS', 'Not enough demo credits')
+    }
+
+    const updatedSession = settlement.session
     const spinId = randomUUID()
 
     this.auditLog.record('spin.resolved', {
