@@ -11,6 +11,8 @@ test('server config uses safe defaults for an empty environment', () => {
   assert.equal(config.sessionIdleTtlMs, 86_400_000)
   assert.equal(config.sessionAbsoluteTtlMs, 604_800_000)
   assert.equal(config.sessionStorePath, '.data/demo-sessions.json')
+  assert.equal(config.databaseUrl, null)
+  assert.equal(config.persistenceBackend, 'json')
 })
 
 test('server config accepts Railway-style runtime values', () => {
@@ -21,6 +23,7 @@ test('server config accepts Railway-style runtime values', () => {
     DEMO_SESSION_IDLE_TTL_MS: '60000',
     DEMO_SESSION_ABSOLUTE_TTL_MS: '3600000',
     DEMO_SESSION_STORE_PATH: '/data/demo-sessions.json',
+    DATABASE_URL: 'postgresql://app:secret@postgres.internal:5432/gmvkasino',
     SPIN_RATE_LIMIT_WINDOW_MS: '5000',
     SPIN_RATE_LIMIT_MAX: '10',
     MAX_JSON_BODY_BYTES: '8192',
@@ -32,11 +35,19 @@ test('server config accepts Railway-style runtime values', () => {
   assert.equal(config.sessionIdleTtlMs, 60000)
   assert.equal(config.sessionAbsoluteTtlMs, 3600000)
   assert.equal(config.sessionStorePath, '/data/demo-sessions.json')
+  assert.equal(config.databaseUrl, 'postgresql://app:secret@postgres.internal:5432/gmvkasino')
+  assert.equal(config.persistenceBackend, 'postgres')
 })
 
 test('legacy DEMO_SESSION_TTL_MS remains an idle-TTL fallback', () => {
   const config = loadServerConfig({ DEMO_SESSION_TTL_MS: '120000' })
   assert.equal(config.sessionIdleTtlMs, 120000)
+})
+
+test('blank DATABASE_URL keeps the local JSON backend', () => {
+  const config = loadServerConfig({ DATABASE_URL: '   ' })
+  assert.equal(config.databaseUrl, null)
+  assert.equal(config.persistenceBackend, 'json')
 })
 
 test('server config fails fast on invalid numeric deployment settings', () => {
