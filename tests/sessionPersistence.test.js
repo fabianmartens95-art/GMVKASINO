@@ -63,3 +63,64 @@ test('expired persisted sessions are pruned when the store starts', () => {
     rmSync(directory, { recursive: true, force: true })
   }
 })
+
+test('idle expiry is extended by activity but absolute expiry is not', () => {
+  let now = 1_000
+  const store = new SessionStore({
+    idleTtlMs: 100,
+    absoluteTtlMs: 150,
+    now: () => now,
+  })
+  const created = store.create()
+
+  now = 1_050
+  assert.equal(store.get(created.id)?.id, created.id)
+
+  now = 1_120
+  assert.equal(store.get(created.id)?.id, created.id)
+
+  now = 1_151
+  assert.equal(store.get(created.id), null)
+})
+
+test('rotating a session invalidates the old token and persists the replacement', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'gmvkasino-rotate-'))
+  const filePath = join(directory, 'sessions.json')
+
+  try {
+    const persistence = new JsonSessionPersistence({ filePath })
+    const firstStore = new SessionStore({ persistence })
+    const created = firstStore.create({ player: 'Rotate QA' })
+    firstStore.applySpin(created.id, { bet: 10, payout: 4 })
+
+    const rotated = firstStore.rotate(created.id)
+    assert.notEqual(rotated.id, created.id)
+    assert.equal(rotated.balance, 994)
+    assert.equal(firstStore.get(created.id), null)
+
+    const restartedStore = new SessionStore({ persistence })
+    assert.equal(restartedStore.get(created.id), null)
+    assert.equal(restartedStore.get(rotated.id)?.balance, 994)
+  } finally {
+    rmSync(directory, { recursive: true, force: true })
+  }
+})
+
+test('invalidating a session removes it from durable state', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'gmvkasino-invalidate-'))
+  const filePath = join(directory, 'sessions.json')
+
+  try {
+    const persistence = new JsonSessionPersistence({ filePath })
+    const firstStore = new SessionStore({ persistence })
+    const created = firstStore.create()
+
+    assert.equal(firstStore.invalidate(created.id), true)
+    assert.equal(firstStore.invalidate(created.id), false)
+
+    const restartedStore = new SessionStore({ persistence })
+    assert.equal(restartedStore.get(created.id), null)
+  } finally {
+    rmSync(directory, { recursive: true, force: true })
+  }
+})
