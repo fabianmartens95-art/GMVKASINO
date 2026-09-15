@@ -62,6 +62,8 @@ Server-owned demo sessions/balances, server-side spin settlement, bet/funds vali
 - 256-bit authentication tokens stored only as SHA-256 hashes in PostgreSQL
 - Separate idle and absolute authentication-session expiry
 - Authenticated game sessions bound to the same persistent account/wallet
+- Active guest sessions can be upgraded in place to registered accounts without replacing their account, wallet, session, balance or ledger history
+- Guest upgrades never issue a second `INITIAL_CREDIT` transaction
 - Auth request rate limiting and explicit logout/revocation
 - Browser auth and game tokens stored separately in `sessionStorage`
 - `GET /api/v1/wallet` exposes the current DEMO wallet through the session/account authorization boundary
@@ -121,7 +123,7 @@ GitHub CI runs on Node 22, restores the npm cache from the committed lockfile, i
 - `GET /api/v1/health/ready` — storage readiness
 - `GET /api/v1/health` — readiness compatibility alias
 - `GET /api/v1/ready` — readiness compatibility alias
-- `POST /api/v1/auth/register` — create a PostgreSQL-backed demo account
+- `POST /api/v1/auth/register` — create a PostgreSQL-backed demo account or upgrade the supplied active guest session in place
 - `POST /api/v1/auth/login` — authenticate a demo account
 - `GET /api/v1/auth/me` — return the authenticated account and DEMO wallet
 - `POST /api/v1/auth/logout` — revoke the current auth token and optionally current game session
@@ -146,7 +148,9 @@ Every game ledger transaction must balance to zero. A demo wager of `5.00` and w
 
 ## Account authentication
 
-Account authentication is available only when `DATABASE_URL` is configured. Registration creates a durable account and DEMO wallet. Passwords are derived with Node's `scrypt` using a random per-account salt; raw passwords are never stored. Authentication sessions use random 256-bit bearer tokens, while PostgreSQL stores only their SHA-256 hashes.
+Account authentication is available only when `DATABASE_URL` is configured. If registration starts without an active guest session, it creates a durable account and DEMO wallet. If an active guest session is supplied, registration instead attaches credentials to that existing account, preserves its current wallet and ledger history, and converts the same game session to `authRequired = true` in the credential transaction. The upgrade does not create another wallet or another `INITIAL_CREDIT` transaction.
+
+Passwords are derived with Node's `scrypt` using a random per-account salt; raw passwords are never stored. Authentication sessions use random 256-bit bearer tokens, while PostgreSQL stores only their SHA-256 hashes.
 
 Account auth tokens and game-session tokens are separate secrets. Browser code stores both in `sessionStorage`, not persistent `localStorage`. An expired account-auth token does not silently downgrade a registered player into a guest session.
 
@@ -223,6 +227,7 @@ tests/
 ├── casinoApi.test.js
 ├── clientAuthApi.test.js
 ├── clientSessionApi.test.js
+├── guestAccountUpgrade.test.js
 ├── httpServer.edge.test.js
 ├── httpServer.test.js
 ├── metricsEndpoint.test.js
@@ -245,4 +250,4 @@ This is still not a real-money architecture. Before any monetary or cryptocurren
 
 ## Next milestone
 
-Finish M6 with stronger ledger reconciliation, account recovery/MFA planning and staging verification of the new authenticated flow. Real-money and cryptocurrency movement remain out of scope.
+Finish M6 with stronger ledger reconciliation, account recovery/MFA planning and staging verification of the authenticated and guest-upgrade flows. Real-money and cryptocurrency movement remain out of scope.
