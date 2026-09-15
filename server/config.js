@@ -10,6 +10,8 @@ export function loadServerConfig(env = process.env) {
     startingBalance: positiveNumber(env.DEMO_STARTING_BALANCE, 1000),
     sessionTtlMs: positiveNumber(env.DEMO_SESSION_TTL_MS, 86_400_000),
     sessionStorePath: env.DEMO_SESSION_STORE_PATH || '.data/demo-sessions.json',
+    databaseUrl: env.DATABASE_URL || '',
+    databaseSsl: env.DATABASE_SSL === 'true',
     rateLimitWindowMs: positiveNumber(env.SPIN_RATE_LIMIT_WINDOW_MS, 10_000),
     rateLimitMaxSpins: positiveNumber(env.SPIN_RATE_LIMIT_MAX, 15),
     maxBodyBytes: positiveNumber(env.MAX_JSON_BODY_BYTES, 16_384),
