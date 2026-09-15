@@ -16,21 +16,27 @@ Central game catalog, persistent player display name, routing, deterministic RNG
 
 Server-owned demo sessions/balances, server-side spin settlement, bet/funds validation, rate limiting, audit logging and HTTP smoke coverage.
 
-### M4 — Persistent Core ✅
+### M4 — Persistent & Session Security Core ✅
 
-Durable JSON session persistence, 256-bit demo session tokens, `/api/v1`, request IDs, structured HTTP logs and persistence/restart tests.
+- Durable JSON session persistence and 256-bit bearer tokens
+- `/api/v1`, request IDs and structured HTTP logs
+- Explicit session rotation and invalidation
+- Separate idle and absolute session expiry limits
+- Browser bearer tokens in `sessionStorage` with one-time legacy `localStorage` migration
+- Automatic safe recovery from expired/invalid sessions
+- Audit correlation via non-reversible session fingerprints instead of raw bearer tokens
 
 ### M5 — PostgreSQL & Operations
 
 - Optional PostgreSQL-backed demo session store via `DATABASE_URL`
 - JSON persistence retained as a local fallback when no database URL is configured
 - Atomic conditional PostgreSQL settlement to prevent concurrent overspend
+- PostgreSQL parity for rotation, invalidation, idle expiry and absolute expiry
 - Async storage contract while keeping the casino service API stable
 - Real PostgreSQL integration tests in GitHub CI
 - Verified PostgreSQL TLS when `DATABASE_SSL=true`, with optional private CA support
 - Separate liveness (`/api/v1/health`) and readiness (`/api/v1/ready`) endpoints
-- Docker production-demo image
-- Local `compose.yaml` stack with PostgreSQL health checks
+- Docker production-demo image and local `compose.yaml` PostgreSQL stack
 - Graceful database pool shutdown
 
 ## Development
@@ -66,7 +72,7 @@ npm test
 npm run build
 ```
 
-GitHub CI runs on Node 22, restores the npm cache from the committed lockfile, installs with `npm ci`, starts PostgreSQL, runs the database integration tests, builds the production frontend and verifies that the Docker image builds successfully.
+GitHub CI runs on Node 22, restores the npm cache from the committed lockfile, installs with `npm ci`, starts PostgreSQL, runs database integration tests, builds the production frontend and verifies that the Docker image builds successfully.
 
 ## API
 
@@ -75,9 +81,11 @@ GitHub CI runs on Node 22, restores the npm cache from the committed lockfile, i
 - `GET /api/v1/games`
 - `POST /api/v1/session`
 - `GET /api/v1/session`
+- `POST /api/v1/session/rotate`
+- `DELETE /api/v1/session`
 - `POST /api/v1/spin`
 
-Every HTTP response receives an `X-Request-Id`. Temporary legacy `/api/*` aliases remain available during migration.
+Every HTTP response receives an `X-Request-Id`. `POST /api/v1/session/rotate` preserves demo state while replacing and invalidating the bearer token. `DELETE /api/v1/session` invalidates and removes the current durable demo session. Temporary legacy `/api/*` aliases remain available during migration.
 
 ## Environment
 
@@ -86,7 +94,8 @@ See `.env.example`. Key settings include:
 - `HOST`
 - `PORT`
 - `DEMO_STARTING_BALANCE`
-- `DEMO_SESSION_TTL_MS`
+- `DEMO_SESSION_IDLE_TTL_MS`
+- `DEMO_SESSION_ABSOLUTE_TTL_MS`
 - `DEMO_SESSION_STORE_PATH`
 - `DATABASE_URL`
 - `DATABASE_SSL`
@@ -96,7 +105,9 @@ See `.env.example`. Key settings include:
 - `MAX_JSON_BODY_BYTES`
 - `AUDIT_MAX_EVENTS`
 
-When `DATABASE_URL` is set, the server initializes and uses PostgreSQL. Otherwise it uses the JSON repository at `.data/demo-sessions.json`. If `DATABASE_SSL=true`, certificate verification remains enabled; `DATABASE_SSL_CA` can supply a private CA certificate, including escaped `\n` newlines when stored in an environment variable.
+The default idle TTL is 24 hours and valid activity refreshes it. The default absolute TTL is seven days and is never extended by activity or token rotation. The legacy `DEMO_SESSION_TTL_MS` remains accepted as an idle-TTL fallback.
+
+When `DATABASE_URL` is set, the server uses PostgreSQL. Otherwise it uses the JSON repository at `.data/demo-sessions.json`. If `DATABASE_SSL=true`, certificate verification remains enabled; `DATABASE_SSL_CA` can supply a private CA certificate, including escaped `\n` newlines in an environment variable.
 
 ## Architecture
 
@@ -123,6 +134,7 @@ src/
 
 tests/
 ├── casinoApi.test.js
+├── clientSessionApi.test.js
 ├── httpServer.edge.test.js
 ├── httpServer.test.js
 ├── postgresSessionStore.test.js
@@ -133,10 +145,12 @@ tests/
 
 ## Security boundary
 
-The browser cannot settle spins or credit itself. The server validates the demo session, game, allowed bet, current balance and rate limit. With PostgreSQL, the balance update is conditional and atomic so concurrent requests cannot both spend the same remaining demo credit.
+The browser cannot settle spins or credit itself. The server validates the demo session, game, allowed bet, current balance and rate limit. With PostgreSQL, balance settlement is conditional and atomic so concurrent requests cannot both spend the same remaining demo credit.
+
+A demo session identifier is a bearer secret. It must not be placed in URLs, general request logs, analytics events, screenshots or source control. Browser storage uses `sessionStorage`; server audit events use a short SHA-256-derived fingerprint instead of the raw token.
 
 This is still not a real-money architecture. Before any monetary functionality, the project would require a separate legal/compliance decision and production-grade identity, financial ledger design, certified game/RNG requirements where applicable, geofencing, AML/KYC, responsible-gambling controls, monitoring, secrets management and infrastructure hardening.
 
 ## Next milestone
 
-M6 should focus on authenticated accounts, session rotation/revocation, database migrations instead of runtime schema creation, metrics/alerts, backup/restore procedures and a staging deployment. Real-money functionality remains out of scope.
+M6 should focus on database migrations instead of runtime schema creation, authenticated accounts, metrics/alerts, backup/restore procedures and a staging deployment. Real-money functionality remains out of scope.
