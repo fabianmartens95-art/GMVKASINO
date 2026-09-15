@@ -10,12 +10,23 @@ import { createHttpServer } from './httpServer.js'
 
 const { Pool } = pg
 
+export function createPostgresPoolConfig(config = SERVER_CONFIG) {
+  return {
+    connectionString: config.databaseUrl,
+    ...(config.databaseSsl
+      ? {
+          ssl: {
+            rejectUnauthorized: true,
+            ...(config.databaseSslCa ? { ca: config.databaseSslCa } : {}),
+          },
+        }
+      : {}),
+  }
+}
+
 export async function createSessionStore(config = SERVER_CONFIG) {
   if (config.databaseUrl) {
-    const pool = new Pool({
-      connectionString: config.databaseUrl,
-      ...(config.databaseSsl ? { ssl: { rejectUnauthorized: false } } : {}),
-    })
+    const pool = new Pool(createPostgresPoolConfig(config))
     const store = new PostgresSessionStore({
       pool,
       startingBalance: config.startingBalance,
