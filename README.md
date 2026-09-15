@@ -27,6 +27,7 @@ Durable JSON session persistence, 256-bit demo session tokens, `/api/v1`, reques
 - Atomic conditional PostgreSQL settlement to prevent concurrent overspend
 - Async storage contract while keeping the casino service API stable
 - Real PostgreSQL integration tests in GitHub CI
+- Verified PostgreSQL TLS when `DATABASE_SSL=true`, with optional private CA support
 - Separate liveness (`/api/v1/health`) and readiness (`/api/v1/ready`) endpoints
 - Docker production-demo image
 - Local `compose.yaml` stack with PostgreSQL health checks
@@ -62,7 +63,7 @@ npm test
 npm run build
 ```
 
-GitHub CI additionally starts PostgreSQL and runs the database integration tests before the production frontend build.
+GitHub CI starts PostgreSQL, runs the database integration tests, builds the production frontend and verifies that the Docker image builds successfully.
 
 ## API
 
@@ -86,12 +87,13 @@ See `.env.example`. Key settings include:
 - `DEMO_SESSION_STORE_PATH`
 - `DATABASE_URL`
 - `DATABASE_SSL`
+- `DATABASE_SSL_CA`
 - `SPIN_RATE_LIMIT_WINDOW_MS`
 - `SPIN_RATE_LIMIT_MAX`
 - `MAX_JSON_BODY_BYTES`
 - `AUDIT_MAX_EVENTS`
 
-When `DATABASE_URL` is set, the server initializes and uses PostgreSQL. Otherwise it uses the JSON repository at `.data/demo-sessions.json`.
+When `DATABASE_URL` is set, the server initializes and uses PostgreSQL. Otherwise it uses the JSON repository at `.data/demo-sessions.json`. If `DATABASE_SSL=true`, certificate verification remains enabled; `DATABASE_SSL_CA` can supply a private CA certificate, including escaped `\n` newlines when stored in an environment variable.
 
 ## Architecture
 
@@ -121,6 +123,7 @@ tests/
 ├── httpServer.edge.test.js
 ├── httpServer.test.js
 ├── postgresSessionStore.test.js
+├── serverConfig.test.js
 ├── sessionPersistence.test.js
 └── slotEngine.test.js
 ```
