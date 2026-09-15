@@ -12,7 +12,9 @@ The supported deployment has these properties:
 - process: one web-service replica
 - persistence: one Railway Volume mounted at `/data`
 - demo session store: `/data/demo-sessions.json`
-- public healthcheck: `GET /api/v1/health`
+- liveness endpoint: `GET /api/v1/health/live`
+- readiness/deployment healthcheck: `GET /api/v1/health/ready`
+- compatibility health alias: `GET /api/v1/health` (same readiness semantics)
 - post-deploy verification: `SMOKE_BASE_URL=https://<domain> npm run smoke`
 
 Do not horizontally scale this JSON-backed version. The current repository layer is a transitional single-process persistence mechanism. Multi-replica deployment requires a real shared database adapter first.
@@ -25,15 +27,15 @@ Do not horizontally scale this JSON-backed version. The current repository layer
 4. Set `DEMO_SESSION_STORE_PATH=/data/demo-sessions.json`.
 5. Keep one service replica while the JSON repository is in use.
 6. Generate a public domain for the service.
-7. Configure the Railway deployment healthcheck path as `/api/v1/health`.
-8. Deploy and wait for the healthcheck to succeed.
+7. Configure the Railway deployment healthcheck path as `/api/v1/health/ready`.
+8. Deploy and wait for the readiness healthcheck to succeed.
 9. From a trusted machine, run the remote smoke check:
 
 ```bash
 SMOKE_BASE_URL=https://<railway-domain> npm run smoke
 ```
 
-The smoke check requires both the versioned API health endpoint and the built frontend shell to respond successfully.
+The smoke check requires liveness, persistence readiness and the built frontend shell to respond successfully.
 
 ## Runtime variables
 
@@ -66,6 +68,16 @@ The server validates configured numeric values at startup and exits on malformed
 
 Because an attached volume cannot be mounted by old and new deployments simultaneously, redeploys can involve a short service interruption. Do not describe this demo deployment as zero-downtime.
 
+## Health semantics
+
+`GET /api/v1/health/live` answers whether the Node process and HTTP server are alive. It intentionally does not depend on the persistence layer.
+
+`GET /api/v1/health/ready` answers whether the service can safely serve requests that depend on persistence. The current JSON adapter checks that its existing state is readable and structurally valid and that the backing location is writable. It does not create or modify player state during the readiness probe.
+
+The compatibility endpoint `GET /api/v1/health` currently has the same readiness semantics. New deployment configuration should use the explicit `/health/ready` path.
+
+A service can therefore be **live but not ready**. In that condition, restart loops are not automatically assumed to be the right recovery action; inspect persistence/volume availability first.
+
 ## Health and verification
 
 Local production-style validation:
@@ -84,25 +96,33 @@ Remote validation after a Railway deployment:
 SMOKE_BASE_URL=https://<railway-domain> npm run smoke
 ```
 
-Expected health payload characteristics:
+Expected liveness payload characteristics:
 
 - HTTP 2xx
 - `ok: true`
+- `status: "live"`
 - `mode: "demo"`
 - `apiVersion: "v1"`
+
+Expected readiness payload characteristics:
+
+- HTTP 2xx when ready, HTTP 503 when not ready
+- `ok: true` and `status: "ready"` when persistence is available
+- `ok: false` and `status: "not_ready"` when persistence is unavailable/corrupt
+- no connection strings, file contents or secret values in the response
 
 The frontend root `/` must return the built HTML application shell.
 
 ## Rollback procedure
 
-If a deployment fails the Railway healthcheck, do not promote it.
+If a deployment fails the Railway readiness healthcheck, do not promote it.
 
 If a bad deployment is already active:
 
 1. Open the service deployment history.
 2. Select the most recent known-good deployment.
 3. Use Railway's rollback action.
-4. Confirm `/api/v1/health`.
+4. Confirm `/api/v1/health/live` and `/api/v1/health/ready`.
 5. Run the remote smoke check against the public domain.
 6. Review logs and open a GitHub issue describing the failed deployment before retrying.
 

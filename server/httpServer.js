@@ -147,8 +147,40 @@ export function createHttpServer({ service, config, staticDir = DEFAULT_STATIC_D
     })
 
     try {
-      if (apiPath === '/health' && req.method === 'GET') {
-        sendJson(res, 200, { ok: true, mode: 'demo', milestone: 'M4', apiVersion: 'v1', requestId })
+      if (apiPath === '/health/live' && req.method === 'GET') {
+        sendJson(res, 200, {
+          ok: true,
+          status: 'live',
+          mode: 'demo',
+          milestone: 'M5',
+          apiVersion: 'v1',
+          requestId,
+        })
+        return
+      }
+
+      if ((apiPath === '/health/ready' || apiPath === '/health') && req.method === 'GET') {
+        try {
+          const readiness = await service.checkReadiness()
+          sendJson(res, 200, {
+            ok: true,
+            status: 'ready',
+            mode: 'demo',
+            milestone: 'M5',
+            apiVersion: 'v1',
+            persistence: readiness?.backend || 'unknown',
+            requestId,
+          })
+        } catch {
+          sendJson(res, 503, {
+            ok: false,
+            status: 'not_ready',
+            mode: 'demo',
+            milestone: 'M5',
+            apiVersion: 'v1',
+            requestId,
+          })
+        }
         return
       }
 

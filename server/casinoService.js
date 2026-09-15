@@ -25,6 +25,10 @@ export class CasinoService {
     this.rng = rng
   }
 
+  async checkReadiness() {
+    return this.sessionStore.checkReadiness()
+  }
+
   getGames() {
     return GAMES.map((game) => ({
       ...game,

@@ -105,6 +105,12 @@ export class SessionStore {
     return this.snapshot(session)
   }
 
+  async checkReadiness() {
+    if (!this.persistence) return { ok: true, backend: 'memory' }
+    if (typeof this.persistence.check !== 'function') return { ok: true, backend: 'unknown' }
+    return this.persistence.check()
+  }
+
   findMutable(sessionId) {
     if (!sessionId) return null
     const session = this.sessions.get(sessionId)
