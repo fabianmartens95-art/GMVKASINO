@@ -70,6 +70,7 @@ Server-owned demo sessions/balances, server-side spin settlement, bet/funds vali
 - Read-only ledger reconciliation compares cached balances with posting history, transaction balance/asset integrity and per-asset conservation
 - `npm run ledger:reconcile` exits non-zero on any accounting mismatch and is enforced as a CI gate
 - PostgreSQL `demo_sessions` stores no balance column; `ledger_accounts` is the sole PostgreSQL balance source
+- CI performs an actual PostgreSQL logical dump → isolated restore → migration/count/reconciliation verification cycle
 
 Historical migration `002_accounts_ledger.sql` uses the old session balance only to bootstrap pre-ledger installations. Migration `004_remove_session_balance.sql` removes that compatibility column after the ledger has been populated. Runtime PostgreSQL session code no longer reads or writes a duplicate balance.
 
@@ -98,7 +99,7 @@ docker compose up --build
 
 The demo is then served on port `8787`.
 
-## Database migrations
+## Database migrations and recovery verification
 
 Apply pending PostgreSQL migrations explicitly with:
 
@@ -107,6 +108,8 @@ DATABASE_URL=postgresql://... npm run db:migrate
 ```
 
 The PostgreSQL startup path uses the same migration runner before serving traffic. Migration authoring and rollback rules are documented in [`docs/DATABASE_MIGRATIONS.md`](docs/DATABASE_MIGRATIONS.md). Recovery and observability procedures are documented in [`docs/DATABASE_RECOVERY.md`](docs/DATABASE_RECOVERY.md) and [`docs/OBSERVABILITY.md`](docs/OBSERVABILITY.md). Ledger reconciliation is documented in [`docs/LEDGER_RECONCILIATION.md`](docs/LEDGER_RECONCILIATION.md). Staging release/promotion rules are documented in [`docs/STAGING.md`](docs/STAGING.md).
+
+`npm run db:restore:verify` verifies an already-restored scratch database against its source using aggregate row counts, migration state and ledger reconciliation. It requires both `DATABASE_URL` and `RESTORE_DATABASE_URL`; it does not create or retain a backup itself. GitHub CI owns the synthetic dump/restore lifecycle around that verifier.
 
 ## Validation
 
@@ -119,7 +122,9 @@ npm run smoke
 docker build -t gmvkasino:local .
 ```
 
-GitHub CI runs on Node 22, restores the npm cache from the committed lockfile, installs with `npm ci`, starts PostgreSQL, applies migrations, runs database integration tests, reconciles the DEMO ledger, builds the production frontend, executes the production smoke check and verifies that the Docker image builds successfully.
+GitHub CI runs on Node 22, restores the npm cache from the committed lockfile, installs with `npm ci`, starts PostgreSQL, applies migrations, runs database integration tests, reconciles the source DEMO ledger, creates a PostgreSQL 16 custom-format logical dump, restores it into an isolated scratch database, verifies migration completeness/aggregate row-count parity/restored-ledger integrity, destroys the scratch recovery artifacts, builds the production frontend, executes the production smoke check and verifies that the Docker image builds successfully.
+
+The CI restore drill uses synthetic CI data. It does not prove that hosted Railway scheduled backups or PITR are enabled; those remain deployment/operations gates in the recovery runbook.
 
 ## API
 
@@ -220,7 +225,8 @@ scripts/
 ├── migrate.mjs
 ├── reconcile-ledger.mjs
 ├── smoke.mjs
-└── validateStagingTarget.mjs
+├── validateStagingTarget.mjs
+└── verify-restore.mjs
 
 src/
 ├── api/casinoApi.js
@@ -262,4 +268,4 @@ This is still not a real-money architecture. Before any monetary or cryptocurren
 
 ## Next milestone
 
-Finish M6 with account recovery/MFA planning and staging verification of the authenticated, guest-upgrade and reconciliation flows. Real-money and cryptocurrency movement remain out of scope.
+Finish M6 with account recovery/MFA planning and hosted staging verification of the authenticated, guest-upgrade, reconciliation and recovery flows. Real-money and cryptocurrency movement remain out of scope.
