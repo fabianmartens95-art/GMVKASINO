@@ -1,6 +1,6 @@
 import { createServer } from 'node:http'
 import { readFile } from 'node:fs/promises'
-import { extname, join, resolve } from 'node:path'
+import { extname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { CasinoError } from './casinoService.js'
 
@@ -62,11 +62,23 @@ function sessionIdFrom(req) {
   return Array.isArray(value) ? value[0] : value
 }
 
+export function isPathWithin(rootPath, targetPath) {
+  const root = resolve(rootPath)
+  const target = resolve(targetPath)
+  const relativePath = relative(root, target)
+
+  return relativePath === ''
+    || (!isAbsolute(relativePath)
+      && relativePath !== '..'
+      && !relativePath.startsWith(`..${sep}`))
+}
+
 async function serveStatic(res, pathname, staticDir) {
   const requested = pathname === '/' ? '/index.html' : pathname
-  const target = resolve(staticDir, `.${requested}`)
+  const root = resolve(staticDir)
+  const target = resolve(root, `.${requested}`)
 
-  if (!target.startsWith(resolve(staticDir))) {
+  if (!isPathWithin(root, target)) {
     sendJson(res, 400, { error: { code: 'INVALID_PATH', message: 'Invalid path' } })
     return
   }
@@ -81,7 +93,7 @@ async function serveStatic(res, pathname, staticDir) {
     res.end(data)
   } catch {
     try {
-      const index = await readFile(join(staticDir, 'index.html'))
+      const index = await readFile(join(root, 'index.html'))
       setSecurityHeaders(res)
       res.writeHead(200, {
         'Content-Type': 'text/html; charset=utf-8',
