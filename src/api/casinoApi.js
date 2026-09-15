@@ -1,20 +1,86 @@
-import { GAMES, getGameById } from '../config/games.js'
-import { spin } from '../game/slotEngine.js'
+const SESSION_KEY = 'gmvkasino.demo.sessionId'
+let memorySessionId = ''
 
-export async function getGames() {
-  return GAMES.map((game) => ({ ...game }))
+function readSessionId() {
+  if (typeof window !== 'undefined' && window.localStorage) {
+    return window.localStorage.getItem(SESSION_KEY) || ''
+  }
+  return memorySessionId
 }
 
-export async function spinDemo({ gameId, bet, rng }) {
-  const game = getGameById(gameId)
+function writeSessionId(sessionId) {
+  memorySessionId = sessionId || ''
+  if (typeof window !== 'undefined' && window.localStorage) {
+    if (sessionId) window.localStorage.setItem(SESSION_KEY, sessionId)
+    else window.localStorage.removeItem(SESSION_KEY)
+  }
+}
 
-  if (!game || game.status !== 'playable') {
-    throw new Error('Game is not available')
+async function request(path, { method = 'GET', body, includeSession = true } = {}) {
+  const headers = { Accept: 'application/json' }
+  if (body !== undefined) headers['Content-Type'] = 'application/json'
+
+  const sessionId = readSessionId()
+  if (includeSession && sessionId) headers['X-Demo-Session'] = sessionId
+
+  const response = await fetch(path, {
+    method,
+    headers,
+    ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+  })
+
+  const payload = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    const error = new Error(payload.error?.message || 'Casino API request failed')
+    error.status = response.status
+    error.code = payload.error?.code || 'API_ERROR'
+    error.details = payload.error?.details
+    throw error
   }
 
-  if (!Number.isFinite(bet) || bet <= 0) {
-    throw new Error('Bet must be a positive number')
-  }
+  return payload
+}
 
-  return spin(bet, rng)
+export async function getGames() {
+  const payload = await request('/api/games', { includeSession: false })
+  return payload.games
+}
+
+export async function openDemoSession({ player = '' } = {}) {
+  const payload = await request('/api/session', {
+    method: 'POST',
+    body: { player },
+  })
+  writeSessionId(payload.session.id)
+  return payload.session
+}
+
+export async function getDemoSession() {
+  if (!readSessionId()) return openDemoSession()
+
+  try {
+    const payload = await request('/api/session')
+    return payload.session
+  } catch (error) {
+    if (error.status !== 401) throw error
+    writeSessionId('')
+    return openDemoSession()
+  }
+}
+
+export async function syncDemoPlayer(player) {
+  return openDemoSession({ player })
+}
+
+export async function spinDemo({ gameId, bet }) {
+  if (!readSessionId()) await openDemoSession()
+  const payload = await request('/api/spin', {
+    method: 'POST',
+    body: { gameId, bet },
+  })
+  return payload.result
+}
+
+export function clearDemoSession() {
+  writeSessionId('')
 }
