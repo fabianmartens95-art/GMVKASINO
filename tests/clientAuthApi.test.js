@@ -53,6 +53,7 @@ test('register stores auth and game bearer tokens in sessionStorage and sends au
           wallet: { balance: 1000 },
           auth: { token: 'auth-token-abcdefghijklmnopqrstuvwxyz-1234567890', expiresAt: 123 },
           session: { id: 'game-session-token', balance: 1000, authRequired: true },
+          upgraded: false,
         }, 201)
       }
       return jsonResponse({
@@ -73,6 +74,36 @@ test('register stores auth and game bearer tokens in sessionStorage and sends au
     assert.equal(localStorage.getItem(AUTH_KEY), null)
     assert.equal(calls[1].options.headers.Authorization, 'Bearer auth-token-abcdefghijklmnopqrstuvwxyz-1234567890')
     assert.equal(calls[1].options.headers['X-Demo-Session'], 'game-session-token')
+  })
+})
+
+test('register sends an existing guest session so the server can upgrade it in place', async () => {
+  await withBrowser(async ({ sessionStorage }) => {
+    sessionStorage.setItem(SESSION_KEY, 'existing-guest-session')
+    const calls = []
+    globalThis.fetch = async (url, options = {}) => {
+      calls.push({ url, options })
+      return jsonResponse({
+        account: { id: 'guest-account', email: 'upgrade@example.com' },
+        wallet: { id: 'existing-wallet', balance: 1049 },
+        auth: { token: 'upgraded-auth-token-abcdefghijklmnopqrstuvwxyz-1234', expiresAt: 123 },
+        session: { id: 'existing-guest-session', balance: 1049, authRequired: true },
+        upgraded: true,
+      }, 201)
+    }
+
+    const api = await import(`../src/api/casinoApi.js?guest-upgrade=${Date.now()}`)
+    const result = await api.registerAccount({
+      email: 'upgrade@example.com',
+      password: 'correct-horse-demo-42',
+      displayName: 'Upgraded Player',
+    })
+
+    assert.equal(result.upgraded, true)
+    assert.equal(calls[0].options.headers['X-Demo-Session'], 'existing-guest-session')
+    assert.equal(calls[0].options.headers.Authorization, undefined)
+    assert.equal(sessionStorage.getItem(SESSION_KEY), 'existing-guest-session')
+    assert.equal(sessionStorage.getItem(AUTH_KEY), 'upgraded-auth-token-abcdefghijklmnopqrstuvwxyz-1234')
   })
 })
 
