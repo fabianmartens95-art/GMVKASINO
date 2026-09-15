@@ -15,7 +15,7 @@ const PAYLINES = [
   [[2, 0], [1, 1], [0, 2]],
 ]
 
-function secureRandom() {
+export function secureRandom() {
   if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
     const values = new Uint32Array(1)
     crypto.getRandomValues(values)
@@ -25,9 +25,9 @@ function secureRandom() {
   return Math.random()
 }
 
-function pickSymbol() {
+function pickSymbol(rng = secureRandom) {
   const totalWeight = SYMBOLS.reduce((sum, symbol) => sum + symbol.weight, 0)
-  let cursor = secureRandom() * totalWeight
+  let cursor = rng() * totalWeight
 
   for (const symbol of SYMBOLS) {
     cursor -= symbol.weight
@@ -37,8 +37,8 @@ function pickSymbol() {
   return SYMBOLS[SYMBOLS.length - 1]
 }
 
-export function createGrid() {
-  return Array.from({ length: 3 }, () => Array.from({ length: 3 }, pickSymbol))
+export function createGrid(rng = secureRandom) {
+  return Array.from({ length: 3 }, () => Array.from({ length: 3 }, () => pickSymbol(rng)))
 }
 
 export function evaluateGrid(grid, bet) {
@@ -64,7 +64,7 @@ export function evaluateGrid(grid, bet) {
   }
 }
 
-export function spin(bet) {
-  const grid = createGrid()
+export function spin(bet, rng = secureRandom) {
+  const grid = createGrid(rng)
   return { grid, ...evaluateGrid(grid, bet) }
 }

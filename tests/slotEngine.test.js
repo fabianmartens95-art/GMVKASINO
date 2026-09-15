@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { SYMBOLS, evaluateGrid } from '../src/game/slotEngine.js'
+import { SYMBOLS, createGrid, evaluateGrid, spin } from '../src/game/slotEngine.js'
 
 const byId = Object.fromEntries(SYMBOLS.map((symbol) => [symbol.id, symbol]))
 
@@ -41,4 +41,12 @@ test('returns zero for a losing grid', () => {
 
   assert.equal(result.wins.length, 0)
   assert.equal(result.totalWin, 0)
+})
+
+test('supports deterministic RNG injection', () => {
+  const deterministic = () => 0
+  const generated = createGrid(deterministic)
+
+  assert.ok(generated.flat().every((symbol) => symbol.id === 'seven'))
+  assert.equal(spin(2, deterministic).totalWin, 100)
 })

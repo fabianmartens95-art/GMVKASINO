@@ -1,5 +1,7 @@
 import { useMemo, useState } from 'react'
-import { createGrid, spin } from '../game/slotEngine.js'
+import { spinDemo } from '../api/casinoApi.js'
+import { getGameById } from '../config/games.js'
+import { createGrid } from '../game/slotEngine.js'
 
 const BETS = [1, 2, 5, 10, 25]
 
@@ -11,7 +13,8 @@ function Symbol({ symbol, spinning }) {
   )
 }
 
-export default function SlotMachine({ balance, setBalance, onBack }) {
+export default function SlotMachine({ gameId, balance, setBalance, onBack }) {
+  const game = getGameById(gameId)
   const initialGrid = useMemo(() => createGrid(), [])
   const [grid, setGrid] = useState(initialGrid)
   const [betIndex, setBetIndex] = useState(2)
@@ -25,7 +28,7 @@ export default function SlotMachine({ balance, setBalance, onBack }) {
     setBetIndex((current) => Math.min(BETS.length - 1, Math.max(0, current + direction)))
   }
 
-  function handleSpin() {
+  async function handleSpin() {
     if (spinning) return
     if (balance < bet) {
       setMessage('Not enough demo credits')
@@ -36,15 +39,21 @@ export default function SlotMachine({ balance, setBalance, onBack }) {
     setMessage('Spinning…')
     setBalance((current) => Number((current - bet).toFixed(2)))
 
-    const result = spin(bet)
+    try {
+      const result = await spinDemo({ gameId, bet })
 
-    window.setTimeout(() => {
-      setGrid(result.grid)
-      setLastWin(result.totalWin)
-      setBalance((current) => Number((current + result.totalWin).toFixed(2)))
-      setMessage(result.totalWin > 0 ? `Win! +${result.totalWin.toFixed(2)} CR` : 'No win — spin again')
+      window.setTimeout(() => {
+        setGrid(result.grid)
+        setLastWin(result.totalWin)
+        setBalance((current) => Number((current + result.totalWin).toFixed(2)))
+        setMessage(result.totalWin > 0 ? `Win! +${result.totalWin.toFixed(2)} CR` : 'No win — spin again')
+        setSpinning(false)
+      }, 650)
+    } catch {
+      setBalance((current) => Number((current + bet).toFixed(2)))
+      setMessage('Spin unavailable')
       setSpinning(false)
-    }, 650)
+    }
   }
 
   return (
@@ -53,7 +62,7 @@ export default function SlotMachine({ balance, setBalance, onBack }) {
         <button className="back-button" onClick={onBack}>← Casino lobby</button>
         <div>
           <span className="eyebrow">GMVKASINO ORIGINAL</span>
-          <h1>Golden Vault</h1>
+          <h1>{game.title}</h1>
         </div>
         <div className="provably-demo">DEMO RNG</div>
       </div>
@@ -61,7 +70,7 @@ export default function SlotMachine({ balance, setBalance, onBack }) {
       <section className="slot-cabinet">
         <div className="cabinet-top">
           <span className="cabinet-star">★</span>
-          <div><small>THE ORIGINAL</small><strong>GOLDEN VAULT</strong></div>
+          <div><small>THE ORIGINAL</small><strong>{game.title.toUpperCase()}</strong></div>
           <span className="cabinet-star">★</span>
         </div>
 
@@ -96,7 +105,7 @@ export default function SlotMachine({ balance, setBalance, onBack }) {
 
           <div className="lines-control">
             <span>LINES</span>
-            <strong>5</strong>
+            <strong>{game.paylines}</strong>
             <small>fixed</small>
           </div>
         </div>
@@ -104,8 +113,8 @@ export default function SlotMachine({ balance, setBalance, onBack }) {
 
       <section className="game-info-panel">
         <div><strong>Demo only</strong><span>No deposits or cash value</span></div>
-        <div><strong>5 paylines</strong><span>Three identical symbols win</span></div>
-        <div><strong>Local session</strong><span>Refresh resets the demo</span></div>
+        <div><strong>{game.paylines} paylines</strong><span>Three identical symbols win</span></div>
+        <div><strong>Persistent demo</strong><span>Balance and player stay on this device</span></div>
       </section>
     </main>
   )
