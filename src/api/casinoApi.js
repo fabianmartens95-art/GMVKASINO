@@ -2,19 +2,48 @@ const API_BASE = '/api/v1'
 const SESSION_KEY = 'gmvkasino.demo.sessionId'
 let memorySessionId = ''
 
-function readSessionId() {
-  if (typeof window !== 'undefined' && window.localStorage) {
-    return window.localStorage.getItem(SESSION_KEY) || ''
+function browserStorage(name) {
+  if (typeof window === 'undefined') return null
+  try {
+    return window[name] || null
+  } catch {
+    return null
   }
+}
+
+function readSessionId() {
+  const sessionStorage = browserStorage('sessionStorage')
+  if (sessionStorage) {
+    const sessionId = sessionStorage.getItem(SESSION_KEY) || ''
+    if (sessionId) {
+      memorySessionId = sessionId
+      return sessionId
+    }
+
+    const legacyStorage = browserStorage('localStorage')
+    const legacySessionId = legacyStorage?.getItem(SESSION_KEY) || ''
+    if (legacySessionId) {
+      sessionStorage.setItem(SESSION_KEY, legacySessionId)
+      legacyStorage.removeItem(SESSION_KEY)
+      memorySessionId = legacySessionId
+      return legacySessionId
+    }
+  }
+
   return memorySessionId
 }
 
 function writeSessionId(sessionId) {
   memorySessionId = sessionId || ''
-  if (typeof window !== 'undefined' && window.localStorage) {
-    if (sessionId) window.localStorage.setItem(SESSION_KEY, sessionId)
-    else window.localStorage.removeItem(SESSION_KEY)
+
+  const sessionStorage = browserStorage('sessionStorage')
+  if (sessionStorage) {
+    if (sessionId) sessionStorage.setItem(SESSION_KEY, sessionId)
+    else sessionStorage.removeItem(SESSION_KEY)
   }
+
+  const legacyStorage = browserStorage('localStorage')
+  legacyStorage?.removeItem(SESSION_KEY)
 }
 
 async function request(path, { method = 'GET', body, includeSession = true } = {}) {
@@ -70,17 +99,60 @@ export async function getDemoSession() {
   }
 }
 
+export async function rotateDemoSession() {
+  if (!readSessionId()) return openDemoSession()
+
+  try {
+    const payload = await request('/session/rotate', { method: 'POST' })
+    writeSessionId(payload.session.id)
+    return payload.session
+  } catch (error) {
+    if (error.status !== 401) throw error
+    writeSessionId('')
+    return openDemoSession()
+  }
+}
+
+export async function invalidateDemoSession() {
+  if (!readSessionId()) {
+    writeSessionId('')
+    return false
+  }
+
+  try {
+    await request('/session', { method: 'DELETE' })
+    return true
+  } catch (error) {
+    if (error.status !== 401) throw error
+    return false
+  } finally {
+    writeSessionId('')
+  }
+}
+
 export async function syncDemoPlayer(player) {
   return openDemoSession({ player })
 }
 
-export async function spinDemo({ gameId, bet }) {
-  if (!readSessionId()) await openDemoSession()
+async function performSpin({ gameId, bet }) {
   const payload = await request('/spin', {
     method: 'POST',
     body: { gameId, bet },
   })
   return payload.result
+}
+
+export async function spinDemo({ gameId, bet }) {
+  if (!readSessionId()) await openDemoSession()
+
+  try {
+    return await performSpin({ gameId, bet })
+  } catch (error) {
+    if (error.status !== 401) throw error
+    writeSessionId('')
+    await openDemoSession()
+    return performSpin({ gameId, bet })
+  }
 }
 
 export function clearDemoSession() {
