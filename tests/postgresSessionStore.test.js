@@ -55,3 +55,58 @@ integrationTest('PostgreSQL conditional settlement prevents concurrent overspend
     await pool.end()
   }
 })
+
+integrationTest('PostgreSQL rotation invalidates the old token and explicit invalidation removes the replacement', async () => {
+  const pool = new Pool({ connectionString: databaseUrl })
+  const store = new PostgresSessionStore({ pool, startingBalance: 1000 })
+
+  try {
+    await store.init()
+    await pool.query('TRUNCATE TABLE demo_sessions')
+    const session = await store.create({ player: 'Rotate DB QA' })
+    await store.applySpin(session.id, { bet: 10, payout: 4 })
+
+    const rotated = await store.rotate(session.id)
+    assert.notEqual(rotated.id, session.id)
+    assert.equal(rotated.balance, 994)
+    assert.equal(rotated.createdAt, session.createdAt)
+    assert.equal(await store.get(session.id), null)
+    assert.equal((await store.get(rotated.id)).balance, 994)
+
+    assert.equal(await store.invalidate(rotated.id), true)
+    assert.equal(await store.invalidate(rotated.id), false)
+    assert.equal(await store.get(rotated.id), null)
+  } finally {
+    await pool.query('TRUNCATE TABLE demo_sessions').catch(() => {})
+    await pool.end()
+  }
+})
+
+integrationTest('PostgreSQL activity extends idle expiry but not absolute expiry', async () => {
+  const pool = new Pool({ connectionString: databaseUrl })
+  let now = 1_000
+  const store = new PostgresSessionStore({
+    pool,
+    idleTtlMs: 100,
+    absoluteTtlMs: 150,
+    now: () => now,
+  })
+
+  try {
+    await store.init()
+    await pool.query('TRUNCATE TABLE demo_sessions')
+    const session = await store.create()
+
+    now = 1_050
+    assert.equal((await store.get(session.id))?.id, session.id)
+
+    now = 1_120
+    assert.equal((await store.get(session.id))?.id, session.id)
+
+    now = 1_151
+    assert.equal(await store.get(session.id), null)
+  } finally {
+    await pool.query('TRUNCATE TABLE demo_sessions').catch(() => {})
+    await pool.end()
+  }
+})
