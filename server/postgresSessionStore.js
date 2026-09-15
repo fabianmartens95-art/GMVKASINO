@@ -178,8 +178,13 @@ export class PostgresSessionStore {
     )
   }
 
-  async ready() {
+  async checkReadiness() {
     await this.pool.query('SELECT 1')
+    return { ok: true, backend: 'postgres' }
+  }
+
+  async ready() {
+    await this.checkReadiness()
     return true
   }
 
