@@ -76,3 +76,27 @@ test('account auth TTL and rate-limit settings have bounded integer configuratio
     /Invalid AUTH_RATE_LIMIT_MAX/,
   )
 })
+
+test('deployment revision prefers Railway git SHA and normalizes hexadecimal casing', () => {
+  const railwaySha = 'ABCDEF0123456789ABCDEF0123456789ABCDEF01'
+  const appSha = '1111111111111111111111111111111111111111'
+  const config = loadServerConfig({
+    RAILWAY_GIT_COMMIT_SHA: railwaySha,
+    APP_REVISION: appSha,
+  })
+
+  assert.equal(config.deploymentRevision, railwaySha.toLowerCase())
+  assert.equal(loadServerConfig({ APP_REVISION: appSha }).deploymentRevision, appSha)
+  assert.equal(loadServerConfig({}).deploymentRevision, '')
+})
+
+test('malformed deployment revisions fail startup validation', () => {
+  assert.throws(
+    () => loadServerConfig({ RAILWAY_GIT_COMMIT_SHA: 'not-a-sha' }),
+    /Invalid RAILWAY_GIT_COMMIT_SHA/,
+  )
+  assert.throws(
+    () => loadServerConfig({ APP_REVISION: 'release-1' }),
+    /Invalid APP_REVISION/,
+  )
+})
