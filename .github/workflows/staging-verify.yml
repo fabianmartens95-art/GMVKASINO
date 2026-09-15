@@ -1,0 +1,43 @@
+name: Staging Verification
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-staging:
+    name: Verify deployed staging
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - name: Checkout tested revision
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install exact dependencies
+        run: npm ci
+      - name: Validate staging target
+        env:
+          STAGING_BASE_URL: ${{ secrets.STAGING_BASE_URL }}
+          PRIMARY_BASE_URL: ${{ secrets.PRIMARY_BASE_URL }}
+        run: node scripts/validateStagingTarget.mjs
+      - name: Run remote staging smoke check
+        env:
+          SMOKE_BASE_URL: ${{ secrets.STAGING_BASE_URL }}
+        run: npm run smoke
+      - name: Record verification summary
+        run: |
+          {
+            echo "## GMVKASINO staging verification"
+            echo ""
+            echo "- Commit: \`${GITHUB_SHA}\`"
+            echo "- Environment: \`staging\`"
+            echo "- Remote smoke: passed"
+            echo "- Target supplied through GitHub Environment secret \`STAGING_BASE_URL\`"
+            echo "- No automatic promotion performed"
+          } >> "$GITHUB_STEP_SUMMARY"
