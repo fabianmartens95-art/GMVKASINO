@@ -35,6 +35,9 @@ export function loadServerConfig(env = process.env) {
   const sessionIdleTtlMs = hasValue(env, 'DEMO_SESSION_IDLE_TTL_MS')
     ? positiveNumber(env, 'DEMO_SESSION_IDLE_TTL_MS', 86_400_000, { integer: true })
     : positiveNumber(env, 'DEMO_SESSION_TTL_MS', 86_400_000, { integer: true })
+  const databaseUrl = hasValue(env, 'DATABASE_URL')
+    ? nonEmptyString(env, 'DATABASE_URL', null)
+    : null
 
   return Object.freeze({
     host: nonEmptyString(env, 'HOST', '0.0.0.0'),
@@ -43,6 +46,8 @@ export function loadServerConfig(env = process.env) {
     sessionIdleTtlMs,
     sessionAbsoluteTtlMs: positiveNumber(env, 'DEMO_SESSION_ABSOLUTE_TTL_MS', 604_800_000, { integer: true }),
     sessionStorePath: nonEmptyString(env, 'DEMO_SESSION_STORE_PATH', '.data/demo-sessions.json'),
+    databaseUrl,
+    persistenceBackend: databaseUrl ? 'postgres' : 'json',
     rateLimitWindowMs: positiveNumber(env, 'SPIN_RATE_LIMIT_WINDOW_MS', 10_000, { integer: true }),
     rateLimitMaxSpins: positiveNumber(env, 'SPIN_RATE_LIMIT_MAX', 15, { integer: true }),
     maxBodyBytes: positiveNumber(env, 'MAX_JSON_BODY_BYTES', 16_384, { integer: true }),
