@@ -48,6 +48,7 @@ export class CasinoService {
     const result = await this.sessionStore.resumeOrCreate({ sessionId, player })
     this.auditLog.record(result.created ? 'session.created' : 'session.resumed', {
       sessionRef: sessionRef(result.session.id),
+      accountId: result.session.accountId || null,
       player: result.session.player || null,
       balance: result.session.balance,
     })
@@ -62,6 +63,27 @@ export class CasinoService {
     return session
   }
 
+  async getWallet(sessionId) {
+    if (typeof this.sessionStore.getWallet === 'function') {
+      const wallet = await this.sessionStore.getWallet(sessionId)
+      if (!wallet) {
+        throw new CasinoError(401, 'SESSION_REQUIRED', 'Demo session is missing or expired')
+      }
+      return wallet
+    }
+
+    const session = await this.getSession(sessionId)
+    return {
+      id: null,
+      accountId: session.accountId || null,
+      asset: { code: 'DEMO', decimals: 2, kind: 'demo' },
+      balanceAtomic: String(Math.round(session.balance * 100)),
+      balance: session.balance,
+      balanceExact: Number(session.balance).toFixed(2),
+      ledgerBacked: false,
+    }
+  }
+
   async rotateSession(sessionId) {
     const rotated = await this.sessionStore.rotate(sessionId)
     if (!rotated) {
@@ -71,6 +93,7 @@ export class CasinoService {
     this.auditLog.record('session.rotated', {
       previousSessionRef: sessionRef(sessionId),
       sessionRef: sessionRef(rotated.id),
+      accountId: rotated.accountId || null,
       player: rotated.player || null,
     })
     return rotated
@@ -113,20 +136,22 @@ export class CasinoService {
     }
 
     const result = spin(bet, this.rng)
+    const spinId = randomUUID()
     const updatedSession = await this.sessionStore.applySpin(session.id, {
       bet,
       payout: result.totalWin,
+      spinId,
+      gameId,
     })
 
     if (!updatedSession) {
       throw new CasinoError(409, 'INSUFFICIENT_DEMO_CREDITS', 'Demo balance changed before settlement')
     }
 
-    const spinId = randomUUID()
-
     this.auditLog.record('spin.resolved', {
       spinId,
       sessionRef: sessionRef(session.id),
+      accountId: updatedSession.accountId || null,
       gameId,
       bet,
       payout: result.totalWin,
