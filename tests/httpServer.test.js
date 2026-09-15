@@ -7,14 +7,16 @@ import { AuditLog } from '../server/auditLog.js'
 import { CasinoService } from '../server/casinoService.js'
 import { createHttpServer, isPathWithin } from '../server/httpServer.js'
 
-function createTestServer({ log = () => {} } = {}) {
-  const service = new CasinoService({
+function createService() {
+  return new CasinoService({
     sessionStore: new SessionStore({ startingBalance: 1000 }),
     rateLimiter: new SlidingWindowRateLimiter({ limit: 5, windowMs: 10_000 }),
     auditLog: new AuditLog({ sink: () => {} }),
     rng: () => 0,
   })
+}
 
+function createTestServer({ log = () => {}, service = createService() } = {}) {
   const config = {
     maxBodyBytes: 16_384,
   }
@@ -52,22 +54,53 @@ test('static path containment accepts children and rejects parent or sibling esc
   )
 })
 
-test('API v1 exposes liveness and readiness separately', async () => {
+test('liveness stays healthy while readiness reflects persistence availability', async () => {
+  const unavailableService = createService()
+  unavailableService.checkReadiness = async () => {
+    throw new Error('persistence unavailable')
+  }
+
+  const server = createTestServer({ service: unavailableService })
+  const baseUrl = await listen(server)
+
+  try {
+    const liveResponse = await fetch(`${baseUrl}/api/v1/health/live`)
+    assert.equal(liveResponse.status, 200)
+    const live = await liveResponse.json()
+    assert.equal(live.ok, true)
+    assert.equal(live.status, 'live')
+    assert.equal(live.mode, 'demo')
+    assert.equal(live.apiVersion, 'v1')
+    assert.equal(live.milestone, 'M5')
+
+    const readyResponse = await fetch(`${baseUrl}/api/v1/health/ready`)
+    assert.equal(readyResponse.status, 503)
+    const ready = await readyResponse.json()
+    assert.equal(ready.ok, false)
+    assert.equal(ready.status, 'not_ready')
+    assert.equal(ready.persistence, undefined)
+  } finally {
+    await close(server)
+  }
+})
+
+test('readiness reports the active storage backend and compatibility aliases remain available', async () => {
   const server = createTestServer()
   const baseUrl = await listen(server)
 
   try {
-    const healthResponse = await fetch(`${baseUrl}/api/v1/health`)
-    assert.equal(healthResponse.status, 200)
-    assert.match(healthResponse.headers.get('x-request-id'), /^[A-Za-z0-9._-]{8,80}$/)
-    const health = await healthResponse.json()
-    assert.equal(health.mode, 'demo')
-    assert.equal(health.apiVersion, 'v1')
-    assert.equal(health.milestone, 'M5')
-
-    const readyResponse = await fetch(`${baseUrl}/api/v1/ready`)
-    assert.equal(readyResponse.status, 200)
-    assert.equal((await readyResponse.json()).ok, true)
+    for (const path of ['/api/v1/health/ready', '/api/v1/health', '/api/v1/ready', '/api/health']) {
+      const response = await fetch(`${baseUrl}${path}`)
+      assert.equal(response.status, 200)
+      assert.match(response.headers.get('x-request-id'), /^[A-Za-z0-9._-]{8,80}$/)
+      const payload = await response.json()
+      assert.equal(payload.ok, true)
+      assert.equal(payload.status, 'ready')
+      assert.equal(payload.mode, 'demo')
+      assert.equal(payload.apiVersion, 'v1')
+      assert.equal(payload.milestone, 'M5')
+      assert.equal(payload.persistence, 'memory')
+    }
   } finally {
     await close(server)
   }
@@ -121,19 +154,6 @@ test('API v1 requires a valid demo session for spins and traces the error', asyn
     const payload = await response.json()
     assert.equal(payload.error.code, 'SESSION_REQUIRED')
     assert.equal(payload.error.requestId, response.headers.get('x-request-id'))
-  } finally {
-    await close(server)
-  }
-})
-
-test('legacy API alias remains available during v1 migration', async () => {
-  const server = createTestServer()
-  const baseUrl = await listen(server)
-
-  try {
-    const response = await fetch(`${baseUrl}/api/health`)
-    assert.equal(response.status, 200)
-    assert.equal((await response.json()).apiVersion, 'v1')
   } finally {
     await close(server)
   }
