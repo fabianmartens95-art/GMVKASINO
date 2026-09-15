@@ -21,12 +21,20 @@ integrationTest('database migrations are tracked and idempotent', async () => {
     const result = await pool.query(
       `SELECT name
        FROM schema_migrations
-       WHERE name IN ('001_demo_sessions.sql', '002_accounts_ledger.sql')
+       WHERE name IN (
+         '001_demo_sessions.sql',
+         '002_accounts_ledger.sql',
+         '003_account_auth.sql'
+       )
        ORDER BY name`,
     )
     assert.deepEqual(
       result.rows.map((row) => row.name),
-      ['001_demo_sessions.sql', '002_accounts_ledger.sql'],
+      [
+        '001_demo_sessions.sql',
+        '002_accounts_ledger.sql',
+        '003_account_auth.sql',
+      ],
     )
   } finally {
     await pool.end()

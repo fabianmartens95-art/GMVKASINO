@@ -52,3 +52,27 @@ test('short metrics bearer tokens fail startup validation', () => {
     /Invalid METRICS_TOKEN/,
   )
 })
+
+test('account auth TTL and rate-limit settings have bounded integer configuration', () => {
+  const defaults = loadServerConfig({})
+  assert.equal(defaults.authSessionIdleTtlMs, 86_400_000)
+  assert.equal(defaults.authSessionAbsoluteTtlMs, 604_800_000)
+  assert.equal(defaults.authRateLimitWindowMs, 60_000)
+  assert.equal(defaults.authRateLimitMaxAttempts, 10)
+
+  const custom = loadServerConfig({
+    AUTH_SESSION_IDLE_TTL_MS: '120000',
+    AUTH_SESSION_ABSOLUTE_TTL_MS: '900000',
+    AUTH_RATE_LIMIT_WINDOW_MS: '30000',
+    AUTH_RATE_LIMIT_MAX: '5',
+  })
+  assert.equal(custom.authSessionIdleTtlMs, 120_000)
+  assert.equal(custom.authSessionAbsoluteTtlMs, 900_000)
+  assert.equal(custom.authRateLimitWindowMs, 30_000)
+  assert.equal(custom.authRateLimitMaxAttempts, 5)
+
+  assert.throws(
+    () => loadServerConfig({ AUTH_RATE_LIMIT_MAX: '0' }),
+    /Invalid AUTH_RATE_LIMIT_MAX/,
+  )
+})

@@ -90,6 +90,10 @@ export function normalizeMetricRoute(apiPath) {
     '/session',
     '/session/rotate',
     '/spin',
+    '/auth/register',
+    '/auth/login',
+    '/auth/me',
+    '/auth/logout',
     '/internal/metrics',
   ])
   return known.has(apiPath) ? `/api/v1${apiPath}` : '/api/v1/other'
@@ -107,6 +111,48 @@ function tokenMatches(provided, expected) {
   const a = Buffer.from(provided)
   const b = Buffer.from(expected)
   return a.length === b.length && timingSafeEqual(a, b)
+}
+
+function clientRateKey(req, scope) {
+  return `${scope}:${req.socket?.remoteAddress || 'unknown'}`
+}
+
+function consumeAuthRateLimit(req, authRateLimiter) {
+  if (!authRateLimiter) return
+  const rate = authRateLimiter.consume(clientRateKey(req, 'auth'))
+  if (!rate.allowed) {
+    throw new CasinoError(429, 'AUTH_RATE_LIMITED', 'Too many authentication attempts', {
+      retryAfterMs: rate.retryAfterMs,
+    })
+  }
+}
+
+async function optionalAuthAccount(req, authService) {
+  const token = bearerToken(req)
+  if (!token) return null
+  if (!authService) {
+    throw new CasinoError(503, 'AUTH_UNAVAILABLE', 'Account authentication requires PostgreSQL mode')
+  }
+  const authenticated = await authService.authenticate(token)
+  if (!authenticated) {
+    throw new CasinoError(401, 'AUTH_SESSION_REQUIRED', 'Authentication session is missing or expired')
+  }
+  return authenticated.account
+}
+
+async function requiredAuthProfile(req, authService) {
+  if (!authService) {
+    throw new CasinoError(503, 'AUTH_UNAVAILABLE', 'Account authentication requires PostgreSQL mode')
+  }
+  const token = bearerToken(req)
+  if (!token) {
+    throw new CasinoError(401, 'AUTH_SESSION_REQUIRED', 'Authentication session is required')
+  }
+  const profile = await authService.profile(token)
+  if (!profile) {
+    throw new CasinoError(401, 'AUTH_SESSION_REQUIRED', 'Authentication session is missing or expired')
+  }
+  return { token, profile }
 }
 
 export function isPathWithin(rootPath, targetPath) {
@@ -153,7 +199,15 @@ async function serveStatic(res, pathname, staticDir) {
   }
 }
 
-export function createHttpServer({ service, config, staticDir = DEFAULT_STATIC_DIR, log = console.log, metrics = service?.metrics } = {}) {
+export function createHttpServer({
+  service,
+  config,
+  staticDir = DEFAULT_STATIC_DIR,
+  log = console.log,
+  metrics = service?.metrics,
+  authService = service?.authService,
+  authRateLimiter = service?.authRateLimiter,
+} = {}) {
   if (!service) throw new Error('service is required')
   if (!config) throw new Error('config is required')
 
@@ -235,51 +289,99 @@ export function createHttpServer({ service, config, staticDir = DEFAULT_STATIC_D
         return
       }
 
+      if ((apiPath === '/auth/register' || apiPath === '/auth/login') && req.method === 'POST') {
+        if (!authService) {
+          throw new CasinoError(503, 'AUTH_UNAVAILABLE', 'Account authentication requires PostgreSQL mode')
+        }
+        consumeAuthRateLimit(req, authRateLimiter)
+        const body = await readJson(req, config.maxBodyBytes)
+        const authResult = apiPath === '/auth/register'
+          ? await authService.register(body)
+          : await authService.login(body)
+        const session = await service.openSession({ accountId: authResult.account.id })
+        const event = apiPath === '/auth/register' ? 'auth.registered' : 'auth.logged_in'
+        metrics?.incrementEvent?.(event)
+        sendJson(res, apiPath === '/auth/register' ? 201 : 200, {
+          account: authResult.account,
+          wallet: authResult.wallet,
+          auth: authResult.auth,
+          session,
+          requestId,
+        })
+        return
+      }
+
+      if (apiPath === '/auth/me' && req.method === 'GET') {
+        const { profile } = await requiredAuthProfile(req, authService)
+        sendJson(res, 200, { profile, requestId })
+        return
+      }
+
+      if (apiPath === '/auth/logout' && req.method === 'POST') {
+        const { token, profile } = await requiredAuthProfile(req, authService)
+        const demoSessionId = sessionIdFrom(req)
+        if (demoSessionId) {
+          await service.invalidateSession(demoSessionId, { accountId: profile.account.id }).catch(() => {})
+        }
+        await authService.logout(token)
+        metrics?.incrementEvent?.('auth.logged_out')
+        sendJson(res, 200, { loggedOut: true, requestId })
+        return
+      }
+
       if (apiPath === '/games' && req.method === 'GET') {
         sendJson(res, 200, { games: service.getGames(), requestId })
         return
       }
 
       if (apiPath === '/wallet' && req.method === 'GET') {
-        const wallet = await service.getWallet(sessionIdFrom(req))
+        const account = await optionalAuthAccount(req, authService)
+        const wallet = await service.getWallet(sessionIdFrom(req), { accountId: account?.id || null })
         sendJson(res, 200, { wallet, requestId })
         return
       }
 
       if (apiPath === '/session/rotate' && req.method === 'POST') {
-        const session = await service.rotateSession(sessionIdFrom(req))
+        const account = await optionalAuthAccount(req, authService)
+        const session = await service.rotateSession(sessionIdFrom(req), { accountId: account?.id || null })
         sendJson(res, 200, { session, requestId })
         return
       }
 
       if (apiPath === '/session' && req.method === 'DELETE') {
-        await service.invalidateSession(sessionIdFrom(req))
+        const account = await optionalAuthAccount(req, authService)
+        await service.invalidateSession(sessionIdFrom(req), { accountId: account?.id || null })
         sendJson(res, 200, { invalidated: true, requestId })
         return
       }
 
       if (apiPath === '/session' && req.method === 'POST') {
+        const account = await optionalAuthAccount(req, authService)
         const body = await readJson(req, config.maxBodyBytes)
         const session = await service.openSession({
           sessionId: sessionIdFrom(req),
           player: body.player,
+          accountId: account?.id || null,
         })
         sendJson(res, 200, { session, requestId })
         return
       }
 
       if (apiPath === '/session' && req.method === 'GET') {
-        const session = await service.getSession(sessionIdFrom(req))
+        const account = await optionalAuthAccount(req, authService)
+        const session = await service.getSession(sessionIdFrom(req), { accountId: account?.id || null })
         sendJson(res, 200, { session, requestId })
         return
       }
 
       if (apiPath === '/spin' && req.method === 'POST') {
+        const account = await optionalAuthAccount(req, authService)
         const body = await readJson(req, config.maxBodyBytes)
         const result = await service.spin({
           sessionId: sessionIdFrom(req),
           gameId: body.gameId,
           bet: body.bet,
+          accountId: account?.id || null,
         })
         sendJson(res, 200, { result, requestId })
         return
@@ -297,9 +399,11 @@ export function createHttpServer({ service, config, staticDir = DEFAULT_STATIC_D
 
       await serveStatic(res, pathname, staticDir)
     } catch (error) {
-      const status = error instanceof CasinoError ? error.status : 500
-      const code = error instanceof CasinoError ? error.code : 'INTERNAL_ERROR'
-      const message = error instanceof CasinoError ? error.message : 'Internal server error'
+      const status = Number.isInteger(error?.status) ? error.status : 500
+      const code = typeof error?.code === 'string' ? error.code : 'INTERNAL_ERROR'
+      const message = status !== 500 && typeof error?.message === 'string'
+        ? error.message
+        : 'Internal server error'
       const headers = status === 429 && error.details?.retryAfterMs
         ? { 'Retry-After': String(Math.ceil(error.details.retryAfterMs / 1000)) }
         : {}

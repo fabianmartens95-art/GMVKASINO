@@ -3,6 +3,7 @@ import { SERVER_CONFIG } from './config.js'
 import { SessionStore } from './sessionStore.js'
 import { JsonSessionPersistence } from './jsonSessionPersistence.js'
 import { PostgresSessionStore } from './postgresSessionStore.js'
+import { AccountAuthService } from './accountAuthService.js'
 import { SlidingWindowRateLimiter } from './rateLimiter.js'
 import { AuditLog } from './auditLog.js'
 import { OperationalMetrics } from './operationalMetrics.js'
@@ -50,20 +51,44 @@ export async function createSessionStore(config = SERVER_CONFIG, { metrics = nul
 
 export async function createDefaultService(config = SERVER_CONFIG) {
   const metrics = new OperationalMetrics()
+  const sessionStore = await createSessionStore(config, { metrics })
+  const authService = config.databaseUrl && sessionStore.pool
+    ? new AccountAuthService({
+        pool: sessionStore.pool,
+        ledger: sessionStore.ledger,
+        startingBalance: config.startingBalance,
+        idleTtlMs: config.authSessionIdleTtlMs,
+        absoluteTtlMs: config.authSessionAbsoluteTtlMs,
+      })
+    : null
+
+  if (authService) await authService.pruneExpired()
+
   return new CasinoService({
-    sessionStore: await createSessionStore(config, { metrics }),
+    sessionStore,
     rateLimiter: new SlidingWindowRateLimiter({
       limit: config.rateLimitMaxSpins,
       windowMs: config.rateLimitWindowMs,
     }),
     auditLog: new AuditLog({ maxEvents: config.auditMaxEvents }),
     metrics,
+    authService,
+    authRateLimiter: new SlidingWindowRateLimiter({
+      limit: config.authRateLimitMaxAttempts,
+      windowMs: config.authRateLimitWindowMs,
+    }),
   })
 }
 
 export async function startServer(config = SERVER_CONFIG) {
   const service = await createDefaultService(config)
-  const server = createHttpServer({ service, config, metrics: service.metrics })
+  const server = createHttpServer({
+    service,
+    config,
+    metrics: service.metrics,
+    authService: service.authService,
+    authRateLimiter: service.authRateLimiter,
+  })
 
   server.listen(config.port, config.host, () => {
     console.log(`GMVKASINO M6 server listening on http://${config.host}:${config.port}`)

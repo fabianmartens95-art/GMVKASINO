@@ -1,6 +1,8 @@
 const API_BASE = '/api/v1'
 const SESSION_KEY = 'gmvkasino.demo.sessionId'
+const AUTH_KEY = 'gmvkasino.auth.token'
 let memorySessionId = ''
+let memoryAuthToken = ''
 
 function browserStorage(name) {
   if (typeof window === 'undefined') return null
@@ -46,12 +48,41 @@ function writeSessionId(sessionId) {
   legacyStorage?.removeItem(SESSION_KEY)
 }
 
-async function request(path, { method = 'GET', body, includeSession = true } = {}) {
+function readAuthToken() {
+  const sessionStorage = browserStorage('sessionStorage')
+  if (sessionStorage) {
+    const token = sessionStorage.getItem(AUTH_KEY) || ''
+    if (token) {
+      memoryAuthToken = token
+      return token
+    }
+  }
+  return memoryAuthToken
+}
+
+function writeAuthToken(token) {
+  memoryAuthToken = token || ''
+  const sessionStorage = browserStorage('sessionStorage')
+  if (sessionStorage) {
+    if (token) sessionStorage.setItem(AUTH_KEY, token)
+    else sessionStorage.removeItem(AUTH_KEY)
+  }
+}
+
+async function request(path, {
+  method = 'GET',
+  body,
+  includeSession = true,
+  includeAuth = true,
+} = {}) {
   const headers = { Accept: 'application/json' }
   if (body !== undefined) headers['Content-Type'] = 'application/json'
 
   const sessionId = readSessionId()
   if (includeSession && sessionId) headers['X-Demo-Session'] = sessionId
+
+  const authToken = readAuthToken()
+  if (includeAuth && authToken) headers.Authorization = `Bearer ${authToken}`
 
   const response = await fetch(`${API_BASE}${path}`, {
     method,
@@ -73,8 +104,61 @@ async function request(path, { method = 'GET', body, includeSession = true } = {
 }
 
 export async function getGames() {
-  const payload = await request('/games', { includeSession: false })
+  const payload = await request('/games', { includeSession: false, includeAuth: false })
   return payload.games
+}
+
+export async function registerAccount({ email, password, displayName = '' }) {
+  const payload = await request('/auth/register', {
+    method: 'POST',
+    body: { email, password, displayName },
+    includeSession: false,
+    includeAuth: false,
+  })
+  writeAuthToken(payload.auth.token)
+  writeSessionId(payload.session.id)
+  return payload
+}
+
+export async function loginAccount({ email, password }) {
+  const payload = await request('/auth/login', {
+    method: 'POST',
+    body: { email, password },
+    includeSession: false,
+    includeAuth: false,
+  })
+  writeAuthToken(payload.auth.token)
+  writeSessionId(payload.session.id)
+  return payload
+}
+
+export async function getAccountProfile() {
+  if (!readAuthToken()) return null
+  try {
+    const payload = await request('/auth/me', { includeSession: false })
+    return payload.profile
+  } catch (error) {
+    if (error.status === 401) writeAuthToken('')
+    throw error
+  }
+}
+
+export async function logoutAccount() {
+  if (!readAuthToken()) {
+    writeSessionId('')
+    return false
+  }
+
+  try {
+    await request('/auth/logout', { method: 'POST' })
+    return true
+  } catch (error) {
+    if (error.status !== 401) throw error
+    return false
+  } finally {
+    writeAuthToken('')
+    writeSessionId('')
+  }
 }
 
 export async function openDemoSession({ player = '' } = {}) {
@@ -93,7 +177,7 @@ export async function getDemoSession() {
     const payload = await request('/session')
     return payload.session
   } catch (error) {
-    if (error.status !== 401) throw error
+    if (error.status !== 401 || error.code === 'AUTH_SESSION_REQUIRED') throw error
     writeSessionId('')
     return openDemoSession()
   }
@@ -106,7 +190,7 @@ export async function getDemoWallet() {
     const payload = await request('/wallet')
     return payload.wallet
   } catch (error) {
-    if (error.status !== 401) throw error
+    if (error.status !== 401 || error.code === 'AUTH_SESSION_REQUIRED') throw error
     writeSessionId('')
     await openDemoSession()
     const payload = await request('/wallet')
@@ -122,7 +206,7 @@ export async function rotateDemoSession() {
     writeSessionId(payload.session.id)
     return payload.session
   } catch (error) {
-    if (error.status !== 401) throw error
+    if (error.status !== 401 || error.code === 'AUTH_SESSION_REQUIRED') throw error
     writeSessionId('')
     return openDemoSession()
   }
@@ -138,7 +222,7 @@ export async function invalidateDemoSession() {
     await request('/session', { method: 'DELETE' })
     return true
   } catch (error) {
-    if (error.status !== 401) throw error
+    if (error.status !== 401 && error.code !== 'AUTH_SESSION_REQUIRED') throw error
     return false
   } finally {
     writeSessionId('')
@@ -163,7 +247,7 @@ export async function spinDemo({ gameId, bet }) {
   try {
     return await performSpin({ gameId, bet })
   } catch (error) {
-    if (error.status !== 401) throw error
+    if (error.status !== 401 || error.code === 'AUTH_SESSION_REQUIRED') throw error
     writeSessionId('')
     await openDemoSession()
     return performSpin({ gameId, bet })
@@ -172,4 +256,8 @@ export async function spinDemo({ gameId, bet }) {
 
 export function clearDemoSession() {
   writeSessionId('')
+}
+
+export function clearAccountAuth() {
+  writeAuthToken('')
 }

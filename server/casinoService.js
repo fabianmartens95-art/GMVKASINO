@@ -18,12 +18,22 @@ export class CasinoError extends Error {
 }
 
 export class CasinoService {
-  constructor({ sessionStore, rateLimiter, auditLog, rng, metrics = null } = {}) {
+  constructor({
+    sessionStore,
+    rateLimiter,
+    auditLog,
+    rng,
+    metrics = null,
+    authService = null,
+    authRateLimiter = null,
+  } = {}) {
     this.sessionStore = sessionStore
     this.rateLimiter = rateLimiter
     this.auditLog = auditLog
     this.rng = rng
     this.metrics = metrics
+    this.authService = authService
+    this.authRateLimiter = authRateLimiter
   }
 
   async checkReadiness() {
@@ -45,8 +55,11 @@ export class CasinoService {
     }))
   }
 
-  async openSession({ sessionId, player } = {}) {
-    const result = await this.sessionStore.resumeOrCreate({ sessionId, player })
+  async openSession({ sessionId, player, accountId = null } = {}) {
+    const result = await this.sessionStore.resumeOrCreate({ sessionId, player, accountId })
+    if (!result.session) {
+      throw new CasinoError(403, 'ACCOUNT_UNAVAILABLE', 'Account is not available')
+    }
     const event = result.created ? 'session.created' : 'session.resumed'
     this.metrics?.incrementEvent?.(event)
     this.auditLog.record(event, {
@@ -54,28 +67,29 @@ export class CasinoService {
       accountId: result.session.accountId || null,
       player: result.session.player || null,
       balance: result.session.balance,
+      authRequired: Boolean(result.session.authRequired),
     })
     return result.session
   }
 
-  async getSession(sessionId) {
-    const session = await this.sessionStore.get(sessionId)
+  async getSession(sessionId, { accountId = null } = {}) {
+    const session = await this.sessionStore.get(sessionId, { accountId })
     if (!session) {
-      throw new CasinoError(401, 'SESSION_REQUIRED', 'Demo session is missing or expired')
+      throw new CasinoError(401, 'SESSION_REQUIRED', 'Demo session is missing, expired, or not authorized')
     }
     return session
   }
 
-  async getWallet(sessionId) {
+  async getWallet(sessionId, { accountId = null } = {}) {
     if (typeof this.sessionStore.getWallet === 'function') {
-      const wallet = await this.sessionStore.getWallet(sessionId)
+      const wallet = await this.sessionStore.getWallet(sessionId, { accountId })
       if (!wallet) {
-        throw new CasinoError(401, 'SESSION_REQUIRED', 'Demo session is missing or expired')
+        throw new CasinoError(401, 'SESSION_REQUIRED', 'Demo session is missing, expired, or not authorized')
       }
       return wallet
     }
 
-    const session = await this.getSession(sessionId)
+    const session = await this.getSession(sessionId, { accountId })
     return {
       id: null,
       accountId: session.accountId || null,
@@ -87,10 +101,10 @@ export class CasinoService {
     }
   }
 
-  async rotateSession(sessionId) {
-    const rotated = await this.sessionStore.rotate(sessionId)
+  async rotateSession(sessionId, { accountId = null } = {}) {
+    const rotated = await this.sessionStore.rotate(sessionId, { accountId })
     if (!rotated) {
-      throw new CasinoError(401, 'SESSION_REQUIRED', 'Demo session is missing or expired')
+      throw new CasinoError(401, 'SESSION_REQUIRED', 'Demo session is missing, expired, or not authorized')
     }
 
     this.metrics?.incrementEvent?.('session.rotated')
@@ -99,26 +113,28 @@ export class CasinoService {
       sessionRef: sessionRef(rotated.id),
       accountId: rotated.accountId || null,
       player: rotated.player || null,
+      authRequired: Boolean(rotated.authRequired),
     })
     return rotated
   }
 
-  async invalidateSession(sessionId) {
-    if (!await this.sessionStore.invalidate(sessionId)) {
-      throw new CasinoError(401, 'SESSION_REQUIRED', 'Demo session is missing or expired')
+  async invalidateSession(sessionId, { accountId = null } = {}) {
+    if (!await this.sessionStore.invalidate(sessionId, { accountId })) {
+      throw new CasinoError(401, 'SESSION_REQUIRED', 'Demo session is missing, expired, or not authorized')
     }
 
     this.metrics?.incrementEvent?.('session.invalidated')
     this.auditLog.record('session.invalidated', {
       sessionRef: sessionRef(sessionId),
+      accountId,
     })
     return true
   }
 
-  async spin({ sessionId, gameId, bet }) {
+  async spin({ sessionId, gameId, bet, accountId = null }) {
     let session
     try {
-      session = await this.getSession(sessionId)
+      session = await this.getSession(sessionId, { accountId })
     } catch (error) {
       if (error instanceof CasinoError && error.code === 'SESSION_REQUIRED') {
         this.metrics?.incrementEvent?.('spin.session_missing')
@@ -160,11 +176,12 @@ export class CasinoService {
       payout: result.totalWin,
       spinId,
       gameId,
+      accountId,
     })
 
     if (!updatedSession) {
       this.metrics?.incrementEvent?.('spin.insufficient_credits')
-      throw new CasinoError(409, 'INSUFFICIENT_DEMO_CREDITS', 'Demo balance changed before settlement')
+      throw new CasinoError(409, 'INSUFFICIENT_DEMO_CREDITS', 'Demo balance changed before settlement or session is not authorized')
     }
 
     this.metrics?.incrementEvent?.('spin.resolved')
