@@ -190,20 +190,20 @@ export function createHttpServer({ service, config, staticDir = DEFAULT_STATIC_D
       }
 
       if (apiPath === '/session/rotate' && req.method === 'POST') {
-        const session = service.rotateSession(sessionIdFrom(req))
+        const session = await service.rotateSession(sessionIdFrom(req))
         sendJson(res, 200, { session, requestId })
         return
       }
 
       if (apiPath === '/session' && req.method === 'DELETE') {
-        service.invalidateSession(sessionIdFrom(req))
+        await service.invalidateSession(sessionIdFrom(req))
         sendJson(res, 200, { invalidated: true, requestId })
         return
       }
 
       if (apiPath === '/session' && req.method === 'POST') {
         const body = await readJson(req, config.maxBodyBytes)
-        const session = service.openSession({
+        const session = await service.openSession({
           sessionId: sessionIdFrom(req),
           player: body.player,
         })
@@ -212,14 +212,14 @@ export function createHttpServer({ service, config, staticDir = DEFAULT_STATIC_D
       }
 
       if (apiPath === '/session' && req.method === 'GET') {
-        const session = service.getSession(sessionIdFrom(req))
+        const session = await service.getSession(sessionIdFrom(req))
         sendJson(res, 200, { session, requestId })
         return
       }
 
       if (apiPath === '/spin' && req.method === 'POST') {
         const body = await readJson(req, config.maxBodyBytes)
-        const result = service.spin({
+        const result = await service.spin({
           sessionId: sessionIdFrom(req),
           gameId: body.gameId,
           bet: body.bet,
