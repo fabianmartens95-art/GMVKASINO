@@ -66,7 +66,7 @@ export async function startServer(config = SERVER_CONFIG) {
   const server = createHttpServer({ service, config, metrics: service.metrics })
 
   server.listen(config.port, config.host, () => {
-    console.log(`GMVKASINO M5 server listening on http://${config.host}:${config.port}`)
+    console.log(`GMVKASINO M6 server listening on http://${config.host}:${config.port}`)
   })
 
   let shuttingDown = false
