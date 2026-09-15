@@ -3,6 +3,10 @@ function positiveNumber(value, fallback) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback
 }
 
+function multilineSecret(value) {
+  return typeof value === 'string' ? value.replace(/\\n/g, '\n') : ''
+}
+
 export function loadServerConfig(env = process.env) {
   return Object.freeze({
     host: env.HOST || '0.0.0.0',
@@ -12,6 +16,7 @@ export function loadServerConfig(env = process.env) {
     sessionStorePath: env.DEMO_SESSION_STORE_PATH || '.data/demo-sessions.json',
     databaseUrl: env.DATABASE_URL || '',
     databaseSsl: env.DATABASE_SSL === 'true',
+    databaseSslCa: multilineSecret(env.DATABASE_SSL_CA),
     rateLimitWindowMs: positiveNumber(env.SPIN_RATE_LIMIT_WINDOW_MS, 10_000),
     rateLimitMaxSpins: positiveNumber(env.SPIN_RATE_LIMIT_MAX, 15),
     maxBodyBytes: positiveNumber(env.MAX_JSON_BODY_BYTES, 16_384),
