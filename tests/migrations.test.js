@@ -19,9 +19,15 @@ integrationTest('database migrations are tracked and idempotent', async () => {
     assert.deepEqual(secondPass, [])
 
     const result = await pool.query(
-      "SELECT name FROM schema_migrations WHERE name = '001_demo_sessions.sql'",
+      `SELECT name
+       FROM schema_migrations
+       WHERE name IN ('001_demo_sessions.sql', '002_accounts_ledger.sql')
+       ORDER BY name`,
     )
-    assert.equal(result.rows.length, 1)
+    assert.deepEqual(
+      result.rows.map((row) => row.name),
+      ['001_demo_sessions.sql', '002_accounts_ledger.sql'],
+    )
   } finally {
     await pool.end()
   }
