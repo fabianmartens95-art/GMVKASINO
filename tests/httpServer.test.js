@@ -1,10 +1,11 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { resolve } from 'node:path'
 import { SessionStore } from '../server/sessionStore.js'
 import { SlidingWindowRateLimiter } from '../server/rateLimiter.js'
 import { AuditLog } from '../server/auditLog.js'
 import { CasinoService } from '../server/casinoService.js'
-import { createHttpServer } from '../server/httpServer.js'
+import { createHttpServer, isPathWithin } from '../server/httpServer.js'
 
 function createTestServer() {
   const service = new CasinoService({
@@ -27,17 +28,29 @@ function createTestServer() {
 }
 
 async function listen(server) {
-  await new Promise((resolve, reject) => {
+  await new Promise((resolvePromise, reject) => {
     server.once('error', reject)
-    server.listen(0, '127.0.0.1', resolve)
+    server.listen(0, '127.0.0.1', resolvePromise)
   })
   const address = server.address()
   return `http://127.0.0.1:${address.port}`
 }
 
 async function close(server) {
-  await new Promise((resolve) => server.close(resolve))
+  await new Promise((resolvePromise) => server.close(resolvePromise))
 }
+
+test('static path containment accepts children and rejects parent or sibling escapes', () => {
+  const root = resolve('tmp', 'gmvkasino-static')
+
+  assert.equal(isPathWithin(root, resolve(root, 'assets', 'app.js')), true)
+  assert.equal(isPathWithin(root, root), true)
+  assert.equal(isPathWithin(root, resolve(root, '..', 'secret.txt')), false)
+  assert.equal(
+    isPathWithin(root, resolve(root, '..', 'gmvkasino-static-escape', 'secret.txt')),
+    false,
+  )
+})
 
 test('API v1 creates a session and resolves a server-side spin with request IDs', async () => {
   const server = createTestServer()
