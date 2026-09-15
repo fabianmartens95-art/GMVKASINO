@@ -32,9 +32,11 @@ Server-owned demo sessions/balances, server-side spin settlement, bet/funds vali
 - JSON persistence retained as a local fallback when no database URL is configured
 - Atomic conditional PostgreSQL settlement to prevent concurrent overspend
 - PostgreSQL parity for rotation, invalidation, idle expiry and absolute expiry
-- Async storage contract while keeping the casino service API stable
 - Real PostgreSQL integration tests in GitHub CI
 - Verified PostgreSQL TLS when `DATABASE_SSL=true`, with optional private CA support
+- Versioned PostgreSQL migrations tracked in `schema_migrations`
+- Advisory-lock protection against concurrent migration execution
+- Explicit `npm run db:migrate` command plus migration-on-start safety
 - Explicit liveness (`/api/v1/health/live`) and persistence readiness (`/api/v1/health/ready`) endpoints
 - Docker production-demo image and local `compose.yaml` PostgreSQL stack
 - Local/remote production smoke check
@@ -65,6 +67,16 @@ docker compose up --build
 
 The demo is then served on port `8787`.
 
+## Database migrations
+
+Apply pending PostgreSQL migrations explicitly with:
+
+```bash
+DATABASE_URL=postgresql://... npm run db:migrate
+```
+
+The PostgreSQL startup path uses the same migration runner before serving traffic. Migration authoring and rollback rules are documented in [`docs/DATABASE_MIGRATIONS.md`](docs/DATABASE_MIGRATIONS.md).
+
 ## Validation
 
 ```bash
@@ -75,7 +87,7 @@ npm run smoke
 docker build -t gmvkasino:local .
 ```
 
-GitHub CI runs on Node 22, restores the npm cache from the committed lockfile, installs with `npm ci`, starts PostgreSQL, runs database integration tests, builds the production frontend, executes the production smoke check and verifies that the Docker image builds successfully.
+GitHub CI runs on Node 22, restores the npm cache from the committed lockfile, installs with `npm ci`, starts PostgreSQL, applies migrations, runs database integration tests, builds the production frontend, executes the production smoke check and verifies that the Docker image builds successfully.
 
 ## API
 
@@ -124,9 +136,16 @@ server/
 ├── httpServer.js
 ├── index.js
 ├── jsonSessionPersistence.js
+├── migrations.js
+├── migrations/
+│   └── 001_demo_sessions.sql
 ├── postgresSessionStore.js
 ├── rateLimiter.js
 └── sessionStore.js
+
+scripts/
+├── migrate.mjs
+└── smoke.mjs
 
 src/
 ├── api/casinoApi.js
@@ -142,6 +161,7 @@ tests/
 ├── clientSessionApi.test.js
 ├── httpServer.edge.test.js
 ├── httpServer.test.js
+├── migrations.test.js
 ├── postgresSessionStore.test.js
 ├── serverConfig.test.js
 ├── sessionPersistence.test.js
@@ -158,4 +178,4 @@ This is still not a real-money architecture. Before any monetary functionality, 
 
 ## Next milestone
 
-M6 should focus on database migrations instead of runtime schema creation, authenticated accounts, metrics/alerts, backup/restore procedures and a staging deployment. Real-money functionality remains out of scope.
+M6 should focus on authenticated accounts, bounded metrics/alerts, backup/restore procedures and a staging deployment. Real-money functionality remains out of scope.
