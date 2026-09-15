@@ -11,16 +11,28 @@ function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-async function assertDeployment(baseUrl) {
-  const healthResponse = await fetch(`${baseUrl}/api/v1/health`)
-  if (!healthResponse.ok) {
-    throw new Error(`Healthcheck failed with HTTP ${healthResponse.status}`)
+async function assertHealth(baseUrl, path, expectedStatus) {
+  const response = await fetch(`${baseUrl}${path}`)
+  if (!response.ok) {
+    throw new Error(`${path} failed with HTTP ${response.status}`)
   }
 
-  const health = await healthResponse.json()
-  if (health.ok !== true || health.mode !== 'demo' || health.apiVersion !== 'v1') {
-    throw new Error('Healthcheck payload is not the expected GMVKASINO demo API')
+  const payload = await response.json()
+  if (
+    payload.ok !== true
+    || payload.mode !== 'demo'
+    || payload.apiVersion !== 'v1'
+    || payload.status !== expectedStatus
+  ) {
+    throw new Error(`${path} payload is not the expected GMVKASINO ${expectedStatus} response`)
   }
+
+  return payload
+}
+
+async function assertDeployment(baseUrl) {
+  await assertHealth(baseUrl, '/api/v1/health/live', 'live')
+  await assertHealth(baseUrl, '/api/v1/health/ready', 'ready')
 
   const frontendResponse = await fetch(`${baseUrl}/`)
   if (!frontendResponse.ok) {
@@ -44,7 +56,7 @@ async function waitUntilReady(baseUrl, child) {
     }
 
     try {
-      const response = await fetch(`${baseUrl}/api/v1/health`)
+      const response = await fetch(`${baseUrl}/api/v1/health/ready`)
       if (response.ok) return
     } catch (error) {
       lastError = error
