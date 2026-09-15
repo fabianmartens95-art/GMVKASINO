@@ -25,27 +25,12 @@ jobs:
         env:
           STAGING_BASE_URL: ${{ secrets.STAGING_BASE_URL }}
           PRIMARY_BASE_URL: ${{ secrets.PRIMARY_BASE_URL }}
-        run: |
-          set -eu
-          if [ -z "$STAGING_BASE_URL" ]; then
-            echo "STAGING_BASE_URL is required in the GitHub staging environment" >&2
-            exit 1
-          fi
-          case "$STAGING_BASE_URL" in
-            https://*) ;;
-            *) echo "STAGING_BASE_URL must use https://" >&2; exit 1 ;;
-          esac
-          if [ -n "$PRIMARY_BASE_URL" ] && [ "$STAGING_BASE_URL" = "$PRIMARY_BASE_URL" ]; then
-            echo "Staging and primary base URLs must be different" >&2
-            exit 1
-          fi
+        run: node scripts/validateStagingTarget.mjs
       - name: Run remote staging smoke check
         env:
           SMOKE_BASE_URL: ${{ secrets.STAGING_BASE_URL }}
         run: npm run smoke
       - name: Record verification summary
-        env:
-          STAGING_BASE_URL: ${{ secrets.STAGING_BASE_URL }}
         run: |
           {
             echo "## GMVKASINO staging verification"
@@ -53,5 +38,6 @@ jobs:
             echo "- Commit: \`${GITHUB_SHA}\`"
             echo "- Environment: \`staging\`"
             echo "- Remote smoke: passed"
-            echo "- Target configured through GitHub Environment secret \`STAGING_BASE_URL\`"
+            echo "- Target supplied through GitHub Environment secret \`STAGING_BASE_URL\`"
+            echo "- No automatic promotion performed"
           } >> "$GITHUB_STEP_SUMMARY"
