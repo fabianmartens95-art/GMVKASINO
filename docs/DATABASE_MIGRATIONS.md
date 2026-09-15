@@ -28,6 +28,14 @@ The PostgreSQL session store also calls the same migration runner during initial
 
 After the first migration run, `schema_migrations` records `001_demo_sessions.sql`; subsequent runs are idempotent.
 
+## M6 balance-source migration
+
+`002_accounts_ledger.sql` converts any pre-ledger PostgreSQL demo-session balance into account, wallet and balanced `INITIAL_CREDIT` ledger records. `003_account_auth.sql` adds account credentials/auth-session support.
+
+`004_remove_session_balance.sql` is deliberately destructive at the schema level: it drops the legacy `demo_sessions.balance` compatibility mirror only after the ledger bootstrap migrations have run. From this point onward, `ledger_accounts` is the only PostgreSQL balance source and `PostgresSessionStore` hydrates session balance from the wallet.
+
+Before applying `004` to a hosted database, create and verify a recovery point according to [`DATABASE_RECOVERY.md`](DATABASE_RECOVERY.md). Old application revisions that still read or write `demo_sessions.balance` are not compatible with the post-`004` schema. Therefore an application rollback to pre-`004` code also requires an explicit schema/data recovery plan rather than a code-only rollback.
+
 ## Rules for future migrations
 
 - Never edit an already-applied migration after it has reached `main`.
@@ -40,7 +48,7 @@ After the first migration run, `schema_migrations` records `001_demo_sessions.sq
 
 ## CI contract
 
-GitHub CI starts PostgreSQL, runs `npm run db:migrate`, then executes the test suite. Integration coverage verifies that migrations are tracked and a second migration pass applies nothing.
+GitHub CI starts PostgreSQL, runs `npm run db:migrate`, then executes the test suite. Integration coverage verifies that migrations are tracked, `demo_sessions.balance` is absent after `004`, and a second migration pass applies nothing.
 
 A change is not migration-complete until:
 
@@ -55,4 +63,4 @@ A change is not migration-complete until:
 
 Application rollback and database rollback are separate operations. Do not delete rows from `schema_migrations` or manually reverse SQL as an ad-hoc rollback mechanism.
 
-For additive compatible migrations, roll the application back while leaving the newer schema in place. For an incompatible future migration, follow [`DATABASE_RECOVERY.md`](DATABASE_RECOVERY.md) and the migration-specific rollback/restore plan. The recovery runbook requires restoring into an isolated target and validating it before cutover rather than overwriting the active database during a drill.
+For additive compatible migrations, roll the application back while leaving the newer schema in place. For incompatible migrations such as `004_remove_session_balance.sql`, follow [`DATABASE_RECOVERY.md`](DATABASE_RECOVERY.md) and the migration-specific rollback/restore plan. The recovery runbook requires restoring into an isolated target and validating it before cutover rather than overwriting the active database during a drill.
