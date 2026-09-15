@@ -18,11 +18,12 @@ export class CasinoError extends Error {
 }
 
 export class CasinoService {
-  constructor({ sessionStore, rateLimiter, auditLog, rng } = {}) {
+  constructor({ sessionStore, rateLimiter, auditLog, rng, metrics = null } = {}) {
     this.sessionStore = sessionStore
     this.rateLimiter = rateLimiter
     this.auditLog = auditLog
     this.rng = rng
+    this.metrics = metrics
   }
 
   async checkReadiness() {
@@ -46,7 +47,9 @@ export class CasinoService {
 
   async openSession({ sessionId, player } = {}) {
     const result = await this.sessionStore.resumeOrCreate({ sessionId, player })
-    this.auditLog.record(result.created ? 'session.created' : 'session.resumed', {
+    const event = result.created ? 'session.created' : 'session.resumed'
+    this.metrics?.incrementEvent?.(event)
+    this.auditLog.record(event, {
       sessionRef: sessionRef(result.session.id),
       player: result.session.player || null,
       balance: result.session.balance,
@@ -68,6 +71,7 @@ export class CasinoService {
       throw new CasinoError(401, 'SESSION_REQUIRED', 'Demo session is missing or expired')
     }
 
+    this.metrics?.incrementEvent?.('session.rotated')
     this.auditLog.record('session.rotated', {
       previousSessionRef: sessionRef(sessionId),
       sessionRef: sessionRef(rotated.id),
@@ -81,6 +85,7 @@ export class CasinoService {
       throw new CasinoError(401, 'SESSION_REQUIRED', 'Demo session is missing or expired')
     }
 
+    this.metrics?.incrementEvent?.('session.invalidated')
     this.auditLog.record('session.invalidated', {
       sessionRef: sessionRef(sessionId),
     })
@@ -88,25 +93,38 @@ export class CasinoService {
   }
 
   async spin({ sessionId, gameId, bet }) {
-    const session = await this.getSession(sessionId)
+    let session
+    try {
+      session = await this.getSession(sessionId)
+    } catch (error) {
+      if (error instanceof CasinoError && error.code === 'SESSION_REQUIRED') {
+        this.metrics?.incrementEvent?.('spin.session_missing')
+      }
+      throw error
+    }
+
     const game = getGameById(gameId)
 
     if (!game || game.status !== 'playable') {
+      this.metrics?.incrementEvent?.('spin.game_unavailable')
       throw new CasinoError(404, 'GAME_UNAVAILABLE', 'Game is not available')
     }
 
     if (!Number.isFinite(bet) || !game.allowedBets?.includes(bet)) {
+      this.metrics?.incrementEvent?.('spin.invalid_bet')
       throw new CasinoError(400, 'INVALID_BET', 'Bet is not allowed', {
         allowedBets: game.allowedBets || [],
       })
     }
 
     if (session.balance < bet) {
+      this.metrics?.incrementEvent?.('spin.insufficient_credits')
       throw new CasinoError(409, 'INSUFFICIENT_DEMO_CREDITS', 'Not enough demo credits')
     }
 
     const rate = this.rateLimiter.consume(session.id)
     if (!rate.allowed) {
+      this.metrics?.incrementEvent?.('spin.rate_limited')
       throw new CasinoError(429, 'RATE_LIMITED', 'Too many spins', {
         retryAfterMs: rate.retryAfterMs,
       })
@@ -119,10 +137,13 @@ export class CasinoService {
     })
 
     if (!updatedSession) {
+      this.metrics?.incrementEvent?.('spin.insufficient_credits')
       throw new CasinoError(409, 'INSUFFICIENT_DEMO_CREDITS', 'Demo balance changed before settlement')
     }
 
     const spinId = randomUUID()
+    this.metrics?.incrementEvent?.('spin.resolved')
+    this.metrics?.incrementEvent?.(result.totalWin > 0 ? 'spin.win' : 'spin.no_win')
 
     this.auditLog.record('spin.resolved', {
       spinId,

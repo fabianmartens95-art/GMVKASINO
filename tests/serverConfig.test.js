@@ -37,3 +37,18 @@ test('PostgreSQL SSL is omitted when disabled', () => {
   const poolConfig = createPostgresPoolConfig(config)
   assert.equal('ssl' in poolConfig, false)
 })
+
+test('metrics endpoint is disabled by default and accepts a strong bearer token', () => {
+  assert.equal(loadServerConfig({}).metricsToken, '')
+
+  const token = 'metrics-config-token-0123456789abcdef'
+  const config = loadServerConfig({ METRICS_TOKEN: token })
+  assert.equal(config.metricsToken, token)
+})
+
+test('short metrics bearer tokens fail startup validation', () => {
+  assert.throws(
+    () => loadServerConfig({ METRICS_TOKEN: 'too-short' }),
+    /Invalid METRICS_TOKEN/,
+  )
+})

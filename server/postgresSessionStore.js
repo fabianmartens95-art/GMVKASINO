@@ -29,6 +29,7 @@ export class PostgresSessionStore {
     idleTtlMs = ttlMs ?? 86_400_000,
     absoluteTtlMs = 604_800_000,
     now = Date.now,
+    metrics = null,
   } = {}) {
     if (!pool) throw new Error('PostgresSessionStore requires a pool')
     this.pool = pool
@@ -36,6 +37,7 @@ export class PostgresSessionStore {
     this.idleTtlMs = idleTtlMs
     this.absoluteTtlMs = absoluteTtlMs
     this.now = now
+    this.metrics = metrics
   }
 
   async init() {
@@ -50,6 +52,22 @@ export class PostgresSessionStore {
       idleCutoff: timestamp - this.idleTtlMs,
       absoluteCutoff: timestamp - this.absoluteTtlMs,
     }
+  }
+
+  async deleteExpiredSession(sessionId, idleCutoff, absoluteCutoff) {
+    if (!sessionId) return false
+    const result = await this.pool.query(
+      `DELETE FROM demo_sessions
+       WHERE id = $1
+         AND (last_seen_at <= $2 OR created_at <= $3)
+       RETURNING id`,
+      [sessionId, idleCutoff, absoluteCutoff],
+    )
+    if (result.rowCount > 0) {
+      this.metrics?.incrementEvent?.('session.expired', result.rowCount)
+      return true
+    }
+    return false
   }
 
   async create({ player = '' } = {}) {
@@ -85,7 +103,9 @@ export class PostgresSessionStore {
        RETURNING id, player, balance, spins, created_at, last_seen_at`,
       [sessionId, timestamp, idleCutoff, absoluteCutoff],
     )
-    return mapRow(result.rows[0])
+    if (result.rows[0]) return mapRow(result.rows[0])
+    await this.deleteExpiredSession(sessionId, idleCutoff, absoluteCutoff)
+    return null
   }
 
   async resumeOrCreate({ sessionId, player } = {}) {
@@ -106,6 +126,7 @@ export class PostgresSessionStore {
       if (result.rows[0]) {
         return { session: mapRow(result.rows[0]), created: false }
       }
+      await this.deleteExpiredSession(sessionId, idleCutoff, absoluteCutoff)
     }
 
     return { session: await this.create({ player }), created: true }
@@ -125,7 +146,9 @@ export class PostgresSessionStore {
        RETURNING id, player, balance, spins, created_at, last_seen_at`,
       [sessionId, nextId, timestamp, idleCutoff, absoluteCutoff],
     )
-    return mapRow(result.rows[0])
+    if (result.rows[0]) return mapRow(result.rows[0])
+    await this.deleteExpiredSession(sessionId, idleCutoff, absoluteCutoff)
+    return null
   }
 
   async invalidate(sessionId) {
@@ -151,15 +174,20 @@ export class PostgresSessionStore {
        RETURNING id, player, balance, spins, created_at, last_seen_at`,
       [sessionId, bet, payout, timestamp, idleCutoff, absoluteCutoff],
     )
-    return mapRow(result.rows[0])
+    if (result.rows[0]) return mapRow(result.rows[0])
+    await this.deleteExpiredSession(sessionId, idleCutoff, absoluteCutoff)
+    return null
   }
 
   async pruneExpired() {
     const { idleCutoff, absoluteCutoff } = this.cutoffs()
-    await this.pool.query(
+    const result = await this.pool.query(
       'DELETE FROM demo_sessions WHERE last_seen_at <= $1 OR created_at <= $2',
       [idleCutoff, absoluteCutoff],
     )
+    if (result.rowCount > 0) {
+      this.metrics?.incrementEvent?.('session.expired', result.rowCount)
+    }
   }
 
   async checkReadiness() {

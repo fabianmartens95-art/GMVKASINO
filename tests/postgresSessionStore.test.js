@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import pg from 'pg'
 import { PostgresSessionStore } from '../server/postgresSessionStore.js'
+import { OperationalMetrics } from '../server/operationalMetrics.js'
 
 const { Pool } = pg
 const databaseUrl = process.env.TEST_DATABASE_URL || ''
@@ -82,14 +83,16 @@ integrationTest('PostgreSQL rotation invalidates the old token and explicit inva
   }
 })
 
-integrationTest('PostgreSQL activity extends idle expiry but not absolute expiry', async () => {
+integrationTest('PostgreSQL activity extends idle expiry but not absolute expiry and records expiry', async () => {
   const pool = new Pool({ connectionString: databaseUrl })
   let now = 1_000
+  const metrics = new OperationalMetrics({ now: () => now })
   const store = new PostgresSessionStore({
     pool,
     idleTtlMs: 100,
     absoluteTtlMs: 150,
     now: () => now,
+    metrics,
   })
 
   try {
@@ -105,6 +108,7 @@ integrationTest('PostgreSQL activity extends idle expiry but not absolute expiry
 
     now = 1_151
     assert.equal(await store.get(session.id), null)
+    assert.equal(metrics.snapshot().events['session.expired'], 1)
   } finally {
     await pool.query('TRUNCATE TABLE demo_sessions').catch(() => {})
     await pool.end()
