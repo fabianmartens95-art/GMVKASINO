@@ -67,6 +67,8 @@ Server-owned demo sessions/balances, server-side spin settlement, bet/funds vali
 - Auth request rate limiting and explicit logout/revocation
 - Browser auth and game tokens stored separately in `sessionStorage`
 - `GET /api/v1/wallet` exposes the current DEMO wallet through the session/account authorization boundary
+- Read-only ledger reconciliation compares cached balances with posting history, transaction balance/asset integrity and per-asset conservation
+- `npm run ledger:reconcile` exits non-zero on any accounting mismatch and is enforced as a CI gate
 
 The `demo_sessions.balance` column remains as a synchronized compatibility mirror during M6. PostgreSQL wallet balance is the authoritative read path. A later migration can remove the mirror after all consumers have moved to the wallet contract.
 
@@ -103,19 +105,20 @@ Apply pending PostgreSQL migrations explicitly with:
 DATABASE_URL=postgresql://... npm run db:migrate
 ```
 
-The PostgreSQL startup path uses the same migration runner before serving traffic. Migration authoring and rollback rules are documented in [`docs/DATABASE_MIGRATIONS.md`](docs/DATABASE_MIGRATIONS.md). Recovery and observability procedures are documented in [`docs/DATABASE_RECOVERY.md`](docs/DATABASE_RECOVERY.md) and [`docs/OBSERVABILITY.md`](docs/OBSERVABILITY.md). Staging release/promotion rules are documented in [`docs/STAGING.md`](docs/STAGING.md).
+The PostgreSQL startup path uses the same migration runner before serving traffic. Migration authoring and rollback rules are documented in [`docs/DATABASE_MIGRATIONS.md`](docs/DATABASE_MIGRATIONS.md). Recovery and observability procedures are documented in [`docs/DATABASE_RECOVERY.md`](docs/DATABASE_RECOVERY.md) and [`docs/OBSERVABILITY.md`](docs/OBSERVABILITY.md). Ledger reconciliation is documented in [`docs/LEDGER_RECONCILIATION.md`](docs/LEDGER_RECONCILIATION.md). Staging release/promotion rules are documented in [`docs/STAGING.md`](docs/STAGING.md).
 
 ## Validation
 
 ```bash
 npm audit --audit-level=high
 npm test
+DATABASE_URL=postgresql://... LEDGER_RECONCILE_ASSET=DEMO npm run ledger:reconcile
 npm run build
 npm run smoke
 docker build -t gmvkasino:local .
 ```
 
-GitHub CI runs on Node 22, restores the npm cache from the committed lockfile, installs with `npm ci`, starts PostgreSQL, applies migrations, runs database integration tests, builds the production frontend, executes the production smoke check and verifies that the Docker image builds successfully.
+GitHub CI runs on Node 22, restores the npm cache from the committed lockfile, installs with `npm ci`, starts PostgreSQL, applies migrations, runs database integration tests, reconciles the DEMO ledger, builds the production frontend, executes the production smoke check and verifies that the Docker image builds successfully.
 
 ## API
 
@@ -145,6 +148,8 @@ M6 stores value as integer atomic units in `NUMERIC(78,0)` rather than floating-
 The model is deliberately capable of representing future asset definitions with different precision, but only the non-monetary `DEMO` asset is enabled. No blockchain address, deposit watcher, withdrawal pipeline, custody integration, or crypto payment adapter exists in M6.
 
 Every game ledger transaction must balance to zero. A demo wager of `5.00` and win of `12.00`, for example, produces postings between the user's DEMO wallet and the DEMO house ledger account; cached wallet balances are updated inside the same PostgreSQL transaction.
+
+`npm run ledger:reconcile` is a read-only integrity check. It verifies that every cached ledger-account balance equals the sum of its entries, every transaction remains balanced and single-asset, and the aggregate balance across each asset is zero. It never auto-repairs a mismatch. See [`docs/LEDGER_RECONCILIATION.md`](docs/LEDGER_RECONCILIATION.md).
 
 ## Account authentication
 
@@ -195,6 +200,7 @@ server/
 ├── httpServer.js
 ├── index.js
 ├── jsonSessionPersistence.js
+├── ledgerReconciliation.js
 ├── migrations.js
 ├── migrations/
 │   ├── 001_demo_sessions.sql
@@ -208,6 +214,7 @@ server/
 
 scripts/
 ├── migrate.mjs
+├── reconcile-ledger.mjs
 ├── smoke.mjs
 └── validateStagingTarget.mjs
 
@@ -230,6 +237,7 @@ tests/
 ├── guestAccountUpgrade.test.js
 ├── httpServer.edge.test.js
 ├── httpServer.test.js
+├── ledgerReconciliation.test.js
 ├── metricsEndpoint.test.js
 ├── migrations.test.js
 ├── operationalMetrics.test.js
@@ -250,4 +258,4 @@ This is still not a real-money architecture. Before any monetary or cryptocurren
 
 ## Next milestone
 
-Finish M6 with stronger ledger reconciliation, account recovery/MFA planning and staging verification of the authenticated and guest-upgrade flows. Real-money and cryptocurrency movement remain out of scope.
+Finish M6 with account recovery/MFA planning, staging verification of the authenticated and guest-upgrade flows, and removal of the legacy session-balance mirror once all consumers use the wallet contract. Real-money and cryptocurrency movement remain out of scope.
