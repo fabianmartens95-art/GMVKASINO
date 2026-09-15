@@ -39,10 +39,14 @@ The JSON repository is intentionally transitional. It establishes a storage abst
 
 ## Development
 
+Install the exact dependency graph from the committed lockfile:
+
 ```bash
-npm install
+npm ci
 npm run dev:server
 ```
+
+Use `npm install` only when intentionally changing dependencies and commit the resulting `package-lock.json` update together with `package.json`.
 
 In a second terminal:
 
@@ -59,7 +63,7 @@ npm test
 npm run build
 ```
 
-GitHub CI runs tests and the production build for pushes to `main` and pull requests.
+GitHub CI runs on Node 20, restores the npm cache from the lockfile, installs with `npm ci`, then runs tests and the production build for pushes to `main` and pull requests.
 
 ## Production-style local demo
 
