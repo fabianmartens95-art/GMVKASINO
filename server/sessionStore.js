@@ -11,12 +11,15 @@ function createSessionToken() {
 export class SessionStore {
   constructor({
     startingBalance = 1000,
-    ttlMs = 86_400_000,
+    ttlMs,
+    idleTtlMs = ttlMs ?? 86_400_000,
+    absoluteTtlMs = 604_800_000,
     now = Date.now,
     persistence = null,
   } = {}) {
     this.startingBalance = startingBalance
-    this.ttlMs = ttlMs
+    this.idleTtlMs = idleTtlMs
+    this.absoluteTtlMs = absoluteTtlMs
     this.now = now
     this.persistence = persistence
     this.sessions = new Map()
@@ -66,6 +69,31 @@ export class SessionStore {
     return { session: this.create({ player }), created: true }
   }
 
+  rotate(sessionId) {
+    const existing = this.findMutable(sessionId)
+    if (!existing) return null
+
+    const timestamp = this.now()
+    const rotated = {
+      ...existing,
+      id: createSessionToken(),
+      lastSeenAt: timestamp,
+      rotatedAt: timestamp,
+    }
+
+    this.sessions.delete(sessionId)
+    this.sessions.set(rotated.id, rotated)
+    this.persist()
+    return this.snapshot(rotated)
+  }
+
+  invalidate(sessionId) {
+    if (!sessionId) return false
+    const removed = this.sessions.delete(sessionId)
+    if (removed) this.persist()
+    return removed
+  }
+
   applySpin(sessionId, { bet, payout }) {
     const session = this.findMutable(sessionId)
     if (!session) return null
@@ -103,7 +131,10 @@ export class SessionStore {
   }
 
   isExpired(session) {
-    return this.now() - session.lastSeenAt > this.ttlMs
+    const timestamp = this.now()
+    const idleExpired = timestamp - session.lastSeenAt > this.idleTtlMs
+    const absoluteExpired = timestamp - session.createdAt > this.absoluteTtlMs
+    return idleExpired || absoluteExpired
   }
 
   persist() {
