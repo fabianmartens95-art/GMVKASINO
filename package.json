@@ -1,18 +1,21 @@
 {
   "name": "gmvkasino",
   "private": true,
-  "version": "0.3.0",
+  "version": "0.4.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "dev:server": "node server/index.js",
     "build": "vite build",
     "test": "node --test",
+    "test:postgres": "node --test tests/postgresSessionRepository.test.js",
+    "db:migrate": "node scripts/migrate.mjs",
     "start": "node server/index.js",
     "smoke": "node scripts/smoke.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
+    "pg": "8.23.0",
     "react": "18.3.1",
     "react-dom": "18.3.1"
   },
