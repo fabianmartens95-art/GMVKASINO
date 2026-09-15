@@ -26,7 +26,7 @@ Server-owned demo sessions/balances, server-side spin settlement, bet/funds vali
 - Automatic safe recovery from expired/invalid sessions
 - Audit correlation via non-reversible session fingerprints instead of raw bearer tokens
 
-### M5 — PostgreSQL & Operations
+### M5 — PostgreSQL & Operations ✅
 
 - Optional PostgreSQL-backed demo session store via `DATABASE_URL`
 - JSON persistence retained as a local fallback when no database URL is configured
@@ -40,7 +40,27 @@ Server-owned demo sessions/balances, server-side spin settlement, bet/funds vali
 - Explicit liveness (`/api/v1/health/live`) and persistence readiness (`/api/v1/health/ready`) endpoints
 - Docker production-demo image and local `compose.yaml` PostgreSQL stack
 - Local/remote production smoke check
-- Graceful database pool shutdown
+- Bounded operational metrics and protected internal metrics endpoint
+- Database recovery and observability runbooks
+
+### M6 — Account & Ledger Foundation
+
+- Persistent account identity separated from session bearer tokens
+- Generic asset registry with explicit decimal precision and asset type
+- `DEMO` is the only enabled asset; no cryptocurrency is activated
+- Exact atomic-unit amount conversion without JavaScript floating-point settlement
+- Per-account available wallets backed by PostgreSQL
+- Double-entry ledger transactions and signed ledger entries
+- Deferred database constraint rejects unbalanced or mixed-asset ledger transactions
+- System issuance and house ledger accounts
+- Initial demo credit issued as a balanced ledger transaction
+- Game bet/win settlement recorded as one atomic database transaction
+- User wallet balances cannot become negative
+- Session rotation, expiry and invalidation preserve account and ledger history
+- Existing PostgreSQL demo sessions are migrated into account + wallet records
+- `GET /api/v1/wallet` exposes the current DEMO wallet through the existing demo-session authorization boundary
+
+The `demo_sessions.balance` column remains as a synchronized compatibility mirror during M6. PostgreSQL wallet balance is the authoritative read path. A later migration can remove the mirror after all consumers have moved to the wallet contract.
 
 ## Development
 
@@ -75,7 +95,7 @@ Apply pending PostgreSQL migrations explicitly with:
 DATABASE_URL=postgresql://... npm run db:migrate
 ```
 
-The PostgreSQL startup path uses the same migration runner before serving traffic. Migration authoring and rollback rules are documented in [`docs/DATABASE_MIGRATIONS.md`](docs/DATABASE_MIGRATIONS.md).
+The PostgreSQL startup path uses the same migration runner before serving traffic. Migration authoring and rollback rules are documented in [`docs/DATABASE_MIGRATIONS.md`](docs/DATABASE_MIGRATIONS.md). Recovery and observability procedures are documented in [`docs/DATABASE_RECOVERY.md`](docs/DATABASE_RECOVERY.md) and [`docs/OBSERVABILITY.md`](docs/OBSERVABILITY.md).
 
 ## Validation
 
@@ -96,13 +116,23 @@ GitHub CI runs on Node 22, restores the npm cache from the committed lockfile, i
 - `GET /api/v1/health` — readiness compatibility alias
 - `GET /api/v1/ready` — readiness compatibility alias
 - `GET /api/v1/games`
+- `GET /api/v1/wallet`
 - `POST /api/v1/session`
 - `GET /api/v1/session`
 - `POST /api/v1/session/rotate`
 - `DELETE /api/v1/session`
 - `POST /api/v1/spin`
+- `GET /api/v1/internal/metrics` — protected operational metrics when configured
 
-Every HTTP response receives an `X-Request-Id`. `POST /api/v1/session/rotate` preserves demo state while replacing and invalidating the bearer token. `DELETE /api/v1/session` invalidates and removes the current durable demo session. Temporary legacy `/api/*` aliases remain available during migration.
+Every HTTP response receives an `X-Request-Id`. `POST /api/v1/session/rotate` preserves demo state while replacing and invalidating the bearer token. `DELETE /api/v1/session` invalidates the current session but deliberately preserves the associated account and ledger history. Temporary legacy `/api/*` aliases remain available during migration.
+
+## Asset and ledger model
+
+M6 stores value as integer atomic units in `NUMERIC(78,0)` rather than floating-point currency amounts. Each asset defines its own decimal precision. `DEMO` currently uses two decimals, so `1000.00 DEMO` is stored as `100000` atomic units.
+
+The model is deliberately capable of representing future asset definitions with different precision, but only the non-monetary `DEMO` asset is enabled. No blockchain address, deposit watcher, withdrawal pipeline, custody integration, or crypto payment adapter exists in M6.
+
+Every game ledger transaction must balance to zero. A demo wager of `5.00` and win of `12.00`, for example, produces postings between the user's DEMO wallet and the DEMO house ledger account; cached wallet balances are updated inside the same PostgreSQL transaction.
 
 ## Environment
 
@@ -121,15 +151,17 @@ See `.env.example`. Key settings include:
 - `SPIN_RATE_LIMIT_MAX`
 - `MAX_JSON_BODY_BYTES`
 - `AUDIT_MAX_EVENTS`
+- `METRICS_TOKEN`
 
 The default idle TTL is 24 hours and valid activity refreshes it. The default absolute TTL is seven days and is never extended by activity or token rotation. The legacy `DEMO_SESSION_TTL_MS` remains accepted as an idle-TTL fallback.
 
-When `DATABASE_URL` is set, the server uses PostgreSQL. Otherwise it uses the JSON repository at `.data/demo-sessions.json`. If `DATABASE_SSL=true`, certificate verification remains enabled; `DATABASE_SSL_CA` can supply a private CA certificate, including escaped `\n` newlines in an environment variable.
+When `DATABASE_URL` is set, the server uses PostgreSQL and M6 ledger-backed sessions. Otherwise it uses the JSON repository at `.data/demo-sessions.json` as a local compatibility fallback. If `DATABASE_SSL=true`, certificate verification remains enabled; `DATABASE_SSL_CA` can supply a private CA certificate, including escaped `\n` newlines in an environment variable.
 
 ## Architecture
 
 ```text
 server/
+├── amounts.js
 ├── auditLog.js
 ├── casinoService.js
 ├── config.js
@@ -138,7 +170,10 @@ server/
 ├── jsonSessionPersistence.js
 ├── migrations.js
 ├── migrations/
-│   └── 001_demo_sessions.sql
+│   ├── 001_demo_sessions.sql
+│   └── 002_accounts_ledger.sql
+├── operationalMetrics.js
+├── postgresLedger.js
 ├── postgresSessionStore.js
 ├── rateLimiter.js
 └── sessionStore.js
@@ -157,11 +192,14 @@ src/
 └── main.jsx
 
 tests/
+├── amounts.test.js
 ├── casinoApi.test.js
 ├── clientSessionApi.test.js
 ├── httpServer.edge.test.js
 ├── httpServer.test.js
+├── metricsEndpoint.test.js
 ├── migrations.test.js
+├── operationalMetrics.test.js
 ├── postgresSessionStore.test.js
 ├── serverConfig.test.js
 ├── sessionPersistence.test.js
@@ -170,12 +208,12 @@ tests/
 
 ## Security boundary
 
-The browser cannot settle spins or credit itself. The server validates the demo session, game, allowed bet, current balance and rate limit. With PostgreSQL, balance settlement is conditional and atomic so concurrent requests cannot both spend the same remaining demo credit.
+The browser cannot settle spins or credit itself. The server validates the demo session, game, allowed bet, current wallet balance and rate limit. With PostgreSQL, each spin locks the session, conditionally updates the user wallet and records balanced ledger entries inside a single database transaction.
 
 A demo session identifier is a bearer secret. It must not be placed in URLs, general request logs, analytics events, screenshots or source control. Browser storage uses `sessionStorage`; server audit events use a short SHA-256-derived fingerprint instead of the raw token.
 
-This is still not a real-money architecture. Before any monetary functionality, the project would require a separate legal/compliance decision and production-grade identity, financial ledger design, certified game/RNG requirements where applicable, geofencing, AML/KYC, responsible-gambling controls, monitoring, secrets management and infrastructure hardening.
+This is still not a real-money architecture. Before any monetary or cryptocurrency functionality, the project would require a separate legal/compliance decision and production-grade identity, custody/payment architecture, deposit and withdrawal state machines, financial reconciliation, certified game/RNG requirements where applicable, geofencing, AML/KYC, sanctions controls, responsible-gambling controls, monitoring, secrets management and infrastructure hardening.
 
 ## Next milestone
 
-M6 should focus on authenticated accounts, bounded metrics/alerts, backup/restore procedures and a staging deployment. Real-money functionality remains out of scope.
+Complete M6 with authenticated accounts and stronger ledger reconciliation/observability, then add backup/restore verification and a staging deployment. Real-money and cryptocurrency movement remain out of scope.

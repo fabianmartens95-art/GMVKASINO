@@ -1,5 +1,6 @@
-import { randomBytes } from 'node:crypto'
+import { randomBytes, randomUUID } from 'node:crypto'
 import { runMigrations } from './migrations.js'
+import { PostgresLedger } from './postgresLedger.js'
 
 function cleanPlayer(player) {
   return typeof player === 'string' ? player.trim().slice(0, 40) : ''
@@ -13,6 +14,7 @@ function mapRow(row) {
   if (!row) return null
   return {
     id: row.id,
+    accountId: row.account_id,
     player: row.player || '',
     balance: Number(row.balance),
     spins: Number(row.spins),
@@ -30,6 +32,7 @@ export class PostgresSessionStore {
     absoluteTtlMs = 604_800_000,
     now = Date.now,
     metrics = null,
+    ledger,
   } = {}) {
     if (!pool) throw new Error('PostgresSessionStore requires a pool')
     this.pool = pool
@@ -38,6 +41,7 @@ export class PostgresSessionStore {
     this.absoluteTtlMs = absoluteTtlMs
     this.now = now
     this.metrics = metrics
+    this.ledger = ledger || new PostgresLedger({ pool, now })
   }
 
   async init() {
@@ -70,25 +74,55 @@ export class PostgresSessionStore {
     return false
   }
 
-  async create({ player = '' } = {}) {
-    const timestamp = this.now()
-    const session = {
-      id: token(),
-      player: cleanPlayer(player),
-      balance: Number(this.startingBalance.toFixed(2)),
-      spins: 0,
-      createdAt: timestamp,
-      lastSeenAt: timestamp,
+  async hydrate(row, executor = this.pool) {
+    const session = mapRow(row)
+    if (!session) return null
+    const wallet = await this.ledger.getWallet(executor, session.accountId)
+    if (!wallet) throw new Error('Demo session account is missing its DEMO wallet')
+    return {
+      ...session,
+      balance: wallet.balance,
+      wallet,
     }
+  }
 
-    const result = await this.pool.query(
-      `INSERT INTO demo_sessions (id, player, balance, spins, created_at, last_seen_at)
-       VALUES ($1, $2, $3, $4, $5, $6)
-       RETURNING id, player, balance, spins, created_at, last_seen_at`,
-      [session.id, session.player, session.balance, session.spins, session.createdAt, session.lastSeenAt],
-    )
+  async create({ player = '' } = {}) {
+    const client = await this.pool.connect()
+    const timestamp = this.now()
 
-    return mapRow(result.rows[0])
+    try {
+      await client.query('BEGIN')
+      const identity = await this.ledger.createDemoAccount(client, {
+        displayName: player,
+        startingBalance: this.startingBalance,
+      })
+
+      const result = await client.query(
+        `INSERT INTO demo_sessions (
+           id, account_id, player, balance, spins, created_at, last_seen_at
+         ) VALUES ($1, $2, $3, $4, 0, $5, $5)
+         RETURNING id, account_id, player, balance, spins, created_at, last_seen_at`,
+        [
+          token(),
+          identity.account.id,
+          cleanPlayer(player),
+          identity.wallet.balanceExact,
+          timestamp,
+        ],
+      )
+
+      await client.query('COMMIT')
+      return {
+        ...mapRow(result.rows[0]),
+        balance: identity.wallet.balance,
+        wallet: identity.wallet,
+      }
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => {})
+      throw error
+    } finally {
+      client.release()
+    }
   }
 
   async get(sessionId) {
@@ -100,10 +134,10 @@ export class PostgresSessionStore {
        WHERE id = $1
          AND last_seen_at > $3
          AND created_at > $4
-       RETURNING id, player, balance, spins, created_at, last_seen_at`,
+       RETURNING id, account_id, player, balance, spins, created_at, last_seen_at`,
       [sessionId, timestamp, idleCutoff, absoluteCutoff],
     )
-    if (result.rows[0]) return mapRow(result.rows[0])
+    if (result.rows[0]) return this.hydrate(result.rows[0])
     await this.deleteExpiredSession(sessionId, idleCutoff, absoluteCutoff)
     return null
   }
@@ -112,19 +146,29 @@ export class PostgresSessionStore {
     if (sessionId) {
       const { timestamp, idleCutoff, absoluteCutoff } = this.cutoffs()
       const hasPlayer = typeof player === 'string'
+      const cleanedPlayer = cleanPlayer(player)
       const result = await this.pool.query(
-        `UPDATE demo_sessions
-         SET player = CASE WHEN $2::boolean THEN $3 ELSE player END,
-             last_seen_at = $4
-         WHERE id = $1
-           AND last_seen_at > $5
-           AND created_at > $6
-         RETURNING id, player, balance, spins, created_at, last_seen_at`,
-        [sessionId, hasPlayer, cleanPlayer(player), timestamp, idleCutoff, absoluteCutoff],
+        `WITH touched AS (
+           UPDATE demo_sessions
+           SET player = CASE WHEN $2::boolean THEN $3 ELSE player END,
+               last_seen_at = $4
+           WHERE id = $1
+             AND last_seen_at > $5
+             AND created_at > $6
+           RETURNING id, account_id, player, balance, spins, created_at, last_seen_at
+         ), updated_account AS (
+           UPDATE accounts
+           SET display_name = $3
+           WHERE id = (SELECT account_id FROM touched LIMIT 1)
+             AND $2::boolean
+           RETURNING id
+         )
+         SELECT * FROM touched`,
+        [sessionId, hasPlayer, cleanedPlayer, timestamp, idleCutoff, absoluteCutoff],
       )
 
       if (result.rows[0]) {
-        return { session: mapRow(result.rows[0]), created: false }
+        return { session: await this.hydrate(result.rows[0]), created: false }
       }
       await this.deleteExpiredSession(sessionId, idleCutoff, absoluteCutoff)
     }
@@ -143,10 +187,10 @@ export class PostgresSessionStore {
        WHERE id = $1
          AND last_seen_at > $4
          AND created_at > $5
-       RETURNING id, player, balance, spins, created_at, last_seen_at`,
+       RETURNING id, account_id, player, balance, spins, created_at, last_seen_at`,
       [sessionId, nextId, timestamp, idleCutoff, absoluteCutoff],
     )
-    if (result.rows[0]) return mapRow(result.rows[0])
+    if (result.rows[0]) return this.hydrate(result.rows[0])
     await this.deleteExpiredSession(sessionId, idleCutoff, absoluteCutoff)
     return null
   }
@@ -160,23 +204,67 @@ export class PostgresSessionStore {
     return Boolean(result.rows[0])
   }
 
-  async applySpin(sessionId, { bet, payout }) {
+  async applySpin(sessionId, { bet, payout, spinId = randomUUID(), gameId = 'unknown' }) {
+    const client = await this.pool.connect()
     const { timestamp, idleCutoff, absoluteCutoff } = this.cutoffs()
-    const result = await this.pool.query(
-      `UPDATE demo_sessions
-       SET balance = balance - $2::numeric + $3::numeric,
-           spins = spins + 1,
-           last_seen_at = $4
-       WHERE id = $1
-         AND last_seen_at > $5
-         AND created_at > $6
-         AND balance >= $2::numeric
-       RETURNING id, player, balance, spins, created_at, last_seen_at`,
-      [sessionId, bet, payout, timestamp, idleCutoff, absoluteCutoff],
-    )
-    if (result.rows[0]) return mapRow(result.rows[0])
-    await this.deleteExpiredSession(sessionId, idleCutoff, absoluteCutoff)
-    return null
+
+    try {
+      await client.query('BEGIN')
+      const sessionResult = await client.query(
+        `SELECT id, account_id, player, balance, spins, created_at, last_seen_at
+         FROM demo_sessions
+         WHERE id = $1
+           AND last_seen_at > $2
+           AND created_at > $3
+         FOR UPDATE`,
+        [sessionId, idleCutoff, absoluteCutoff],
+      )
+      const session = sessionResult.rows[0]
+      if (!session) {
+        await client.query('ROLLBACK')
+        await this.deleteExpiredSession(sessionId, idleCutoff, absoluteCutoff)
+        return null
+      }
+
+      const wallet = await this.ledger.settleDemoGame(client, {
+        accountId: session.account_id,
+        bet,
+        payout,
+        spinId,
+        gameId,
+      })
+      if (!wallet) {
+        await client.query('ROLLBACK')
+        return null
+      }
+
+      const updatedResult = await client.query(
+        `UPDATE demo_sessions
+         SET balance = $2::numeric,
+             spins = spins + 1,
+             last_seen_at = $3
+         WHERE id = $1
+         RETURNING id, account_id, player, balance, spins, created_at, last_seen_at`,
+        [sessionId, wallet.balanceExact, timestamp],
+      )
+
+      await client.query('COMMIT')
+      return {
+        ...mapRow(updatedResult.rows[0]),
+        balance: wallet.balance,
+        wallet,
+      }
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => {})
+      throw error
+    } finally {
+      client.release()
+    }
+  }
+
+  async getWallet(sessionId) {
+    const session = await this.get(sessionId)
+    return session?.wallet || null
   }
 
   async pruneExpired() {

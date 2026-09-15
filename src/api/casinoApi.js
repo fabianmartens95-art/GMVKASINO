@@ -99,6 +99,21 @@ export async function getDemoSession() {
   }
 }
 
+export async function getDemoWallet() {
+  if (!readSessionId()) await openDemoSession()
+
+  try {
+    const payload = await request('/wallet')
+    return payload.wallet
+  } catch (error) {
+    if (error.status !== 401) throw error
+    writeSessionId('')
+    await openDemoSession()
+    const payload = await request('/wallet')
+    return payload.wallet
+  }
+}
+
 export async function rotateDemoSession() {
   if (!readSessionId()) return openDemoSession()
 
