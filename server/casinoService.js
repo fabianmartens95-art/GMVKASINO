@@ -214,6 +214,9 @@ export class CasinoService {
   }
 
   async close() {
+    if (typeof this.auditLog?.flush === 'function') {
+      await this.auditLog.flush()
+    }
     if (typeof this.sessionStore.close === 'function') {
       await this.sessionStore.close()
     }
