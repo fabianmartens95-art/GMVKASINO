@@ -11,12 +11,14 @@ const ASSET_CODE = (process.env.LEDGER_RECONCILE_ASSET || 'DEMO').trim().toUpper
 const TABLES = Object.freeze([
   'schema_migrations',
   'accounts',
+  'account_roles',
   'assets',
   'ledger_accounts',
   'ledger_transactions',
   'ledger_entries',
   'demo_sessions',
   'auth_sessions',
+  'audit_events',
 ])
 
 function requireUrl(value, name) {
