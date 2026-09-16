@@ -37,6 +37,7 @@ integrationTest('account registration hashes credentials and auth tokens while p
 
     assert.equal(registered.account.email, 'player.one@example.com')
     assert.equal(registered.account.displayName, 'Player One')
+    assert.deepEqual(registered.account.roles, ['player'])
     assert.equal(registered.wallet.balance, 1000)
     assert.equal(registered.wallet.accountId, registered.account.id)
     assert.ok(registered.auth.token.length >= 40)
@@ -60,6 +61,7 @@ integrationTest('account registration hashes credentials and auth tokens while p
 
     const profile = await auth.profile(registered.auth.token)
     assert.equal(profile.account.id, registered.account.id)
+    assert.deepEqual(profile.account.roles, ['player'])
     assert.equal(profile.wallet.balance, 1000)
 
     await assert.rejects(
@@ -72,6 +74,7 @@ integrationTest('account registration hashes credentials and auth tokens while p
       password: 'correct-horse-demo-42',
     })
     assert.equal(loggedIn.account.id, registered.account.id)
+    assert.deepEqual(loggedIn.account.roles, ['player'])
     assert.equal(loggedIn.wallet.id, registered.wallet.id)
     assert.notEqual(loggedIn.auth.token, registered.auth.token)
 
