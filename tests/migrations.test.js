@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import pg from 'pg'
+import { randomUUID } from 'node:crypto'
 import { runMigrations } from '../server/migrations.js'
 
 const { Pool } = pg
@@ -26,7 +27,8 @@ integrationTest('database migrations are tracked and idempotent', async () => {
          '002_accounts_ledger.sql',
          '003_account_auth.sql',
          '004_remove_session_balance.sql',
-         '005_account_roles.sql'
+         '005_account_roles.sql',
+         '006_audit_events.sql'
        )
        ORDER BY name`,
     )
@@ -38,6 +40,7 @@ integrationTest('database migrations are tracked and idempotent', async () => {
         '003_account_auth.sql',
         '004_remove_session_balance.sql',
         '005_account_roles.sql',
+        '006_audit_events.sql',
       ],
     )
 
@@ -49,6 +52,21 @@ integrationTest('database migrations are tracked and idempotent', async () => {
          AND column_name = 'balance'`,
     )
     assert.equal(legacyBalanceColumn.rowCount, 0)
+
+    const auditId = randomUUID()
+    await pool.query(
+      `INSERT INTO audit_events (id, event_type, occurred_at, account_id, data)
+       VALUES ($1, 'test.audit', NOW(), NULL, '{}'::jsonb)`,
+      [auditId],
+    )
+    await assert.rejects(
+      pool.query(`UPDATE audit_events SET event_type = 'test.changed' WHERE id = $1`, [auditId]),
+      /append-only/,
+    )
+    await assert.rejects(
+      pool.query(`DELETE FROM audit_events WHERE id = $1`, [auditId]),
+      /append-only/,
+    )
   } finally {
     await pool.end()
   }
@@ -96,6 +114,7 @@ integrationTest('legacy M5 sessions preserve value and history across ledger boo
       '003_account_auth.sql',
       '004_remove_session_balance.sql',
       '005_account_roles.sql',
+      '006_audit_events.sql',
     ])
 
     const session = await legacyPool.query(
@@ -178,6 +197,15 @@ integrationTest('legacy M5 sessions preserve value and history across ledger boo
       [schema],
     )
     assert.equal(removedColumn.rowCount, 0)
+
+    const auditTable = await admin.query(
+      `SELECT 1
+       FROM information_schema.tables
+       WHERE table_schema = $1
+         AND table_name = 'audit_events'`,
+      [schema],
+    )
+    assert.equal(auditTable.rowCount, 1)
 
     const secondPass = await runMigrations({ pool: legacyPool })
     assert.deepEqual(secondPass, [])
