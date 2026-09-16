@@ -7,6 +7,7 @@ import {
 } from 'node:crypto'
 import { promisify } from 'node:util'
 import { PostgresLedger } from './postgresLedger.js'
+import { normalizeAccountRoles } from './accessControl.js'
 
 const scrypt = promisify(scryptCallback)
 const PASSWORD_SCHEME = 'scrypt-v1'
@@ -64,18 +65,35 @@ function tokenHash(token) {
   return createHash('sha256').update(token).digest('hex')
 }
 
-function accountSnapshot(row) {
+function accountSnapshot(row, roles = []) {
   if (!row) return null
   return {
     id: row.id,
     email: row.email,
     displayName: row.display_name || '',
     status: row.status,
+    roles: normalizeAccountRoles(roles),
     createdAt: Number(row.created_at),
     updatedAt: row.updated_at === null || row.updated_at === undefined
       ? null
       : Number(row.updated_at),
   }
+}
+
+async function accountRoles(executor, accountId) {
+  const result = await executor.query(
+    `SELECT role
+     FROM account_roles
+     WHERE account_id = $1
+     ORDER BY role`,
+    [accountId],
+  )
+  return normalizeAccountRoles(result.rows.map((row) => row.role))
+}
+
+async function accountSnapshotWithRoles(executor, row) {
+  if (!row) return null
+  return accountSnapshot(row, await accountRoles(executor, row.id))
 }
 
 export class AccountAuthService {
@@ -145,11 +163,12 @@ export class AccountAuthService {
         ],
       )
 
+      const account = await accountSnapshotWithRoles(client, accountResult.rows[0])
       const auth = await this.createAuthSession(client, identity.account.id)
       await client.query('COMMIT')
 
       return {
-        account: accountSnapshot(accountResult.rows[0]),
+        account,
         wallet: identity.wallet,
         auth,
       }
@@ -209,7 +228,7 @@ export class AccountAuthService {
         [sessionId, accountId, hasDisplayName, cleanedDisplayName],
       )
       if (!protectedSession.rows[0]) {
-        throw new AccountAuthError(409, 'GUEST_UPGRADE_UNAVAILABLE', 'Guest session cannot be upgraded')
+        throw new AccountAuthError(409, 'GUEST_UPGRADE_UNAVAILABLE', 'Guest account cannot be upgraded')
       }
 
       const timestamp = this.now()
@@ -234,13 +253,14 @@ export class AccountAuthService {
           cleanedDisplayName,
         ],
       )
+      const account = await accountSnapshotWithRoles(client, accountResult.rows[0])
       const wallet = await this.ledger.getWallet(client, accountId)
       if (!wallet) throw new Error('Guest account is missing its DEMO wallet')
       const auth = await this.createAuthSession(client, accountId)
       await client.query('COMMIT')
 
       return {
-        account: accountSnapshot(accountResult.rows[0]),
+        account,
         wallet,
         auth,
         upgraded: true,
@@ -282,12 +302,13 @@ export class AccountAuthService {
       throw new AccountAuthError(403, 'ACCOUNT_DISABLED', 'Account is disabled')
     }
 
+    const account = await accountSnapshotWithRoles(this.pool, row)
     const auth = await this.createAuthSession(this.pool, row.id)
     const wallet = await this.ledger.getWallet(this.pool, row.id)
     if (!wallet) throw new Error('Authenticated account is missing its DEMO wallet')
 
     return {
-      account: accountSnapshot(row),
+      account,
       wallet,
       auth,
     }
@@ -317,7 +338,7 @@ export class AccountAuthService {
     const row = result.rows[0]
     if (!row) return null
     return {
-      account: accountSnapshot(row),
+      account: await accountSnapshotWithRoles(this.pool, row),
       expiresAt: Number(row.expires_at),
     }
   }
