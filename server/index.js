@@ -5,7 +5,7 @@ import { JsonSessionPersistence } from './jsonSessionPersistence.js'
 import { PostgresSessionStore } from './postgresSessionStore.js'
 import { AccountAuthService } from './accountAuthService.js'
 import { SlidingWindowRateLimiter } from './rateLimiter.js'
-import { AuditLog } from './auditLog.js'
+import { AuditLog, PostgresAuditEventStore } from './auditLog.js'
 import { OperationalMetrics } from './operationalMetrics.js'
 import { CasinoService } from './casinoService.js'
 import { createHttpServer } from './httpServer.js'
@@ -64,13 +64,20 @@ export async function createDefaultService(config = SERVER_CONFIG) {
 
   if (authService) await authService.pruneExpired()
 
+  const auditStore = config.databaseUrl && sessionStore.pool
+    ? new PostgresAuditEventStore({ pool: sessionStore.pool })
+    : null
+
   return new CasinoService({
     sessionStore,
     rateLimiter: new SlidingWindowRateLimiter({
       limit: config.rateLimitMaxSpins,
       windowMs: config.rateLimitWindowMs,
     }),
-    auditLog: new AuditLog({ maxEvents: config.auditMaxEvents }),
+    auditLog: new AuditLog({
+      maxEvents: config.auditMaxEvents,
+      store: auditStore,
+    }),
     metrics,
     authService,
     authRateLimiter: new SlidingWindowRateLimiter({
