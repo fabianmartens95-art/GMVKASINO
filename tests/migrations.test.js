@@ -25,7 +25,8 @@ integrationTest('database migrations are tracked and idempotent', async () => {
          '001_demo_sessions.sql',
          '002_accounts_ledger.sql',
          '003_account_auth.sql',
-         '004_remove_session_balance.sql'
+         '004_remove_session_balance.sql',
+         '005_account_roles.sql'
        )
        ORDER BY name`,
     )
@@ -36,6 +37,7 @@ integrationTest('database migrations are tracked and idempotent', async () => {
         '002_accounts_ledger.sql',
         '003_account_auth.sql',
         '004_remove_session_balance.sql',
+        '005_account_roles.sql',
       ],
     )
 
@@ -93,6 +95,7 @@ integrationTest('legacy M5 sessions preserve value and history across ledger boo
       '002_accounts_ledger.sql',
       '003_account_auth.sql',
       '004_remove_session_balance.sql',
+      '005_account_roles.sql',
     ])
 
     const session = await legacyPool.query(
@@ -116,6 +119,15 @@ integrationTest('legacy M5 sessions preserve value and history across ledger boo
     )
     assert.equal(account.rows[0].display_name, 'Legacy Player')
     assert.equal(account.rows[0].status, 'active')
+
+    const roles = await legacyPool.query(
+      `SELECT role
+       FROM account_roles
+       WHERE account_id = $1
+       ORDER BY role`,
+      [session.rows[0].account_id],
+    )
+    assert.deepEqual(roles.rows.map((row) => row.role), ['player'])
 
     const wallet = await legacyPool.query(
       `SELECT id, balance_atomic
