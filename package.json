@@ -19,7 +19,7 @@
     "gate:evaluate": "node scripts/evaluate-production-gate.mjs",
     "prod:revision:verify": "node scripts/verify-production-revision.mjs",
     "preview": "vite preview",
-    "load:staging": "node scripts/load-test.mjs"
+    "load:staging": "node scripts/load-harness.mjs"
   },
   "dependencies": {
     "pg": "8.23.0",
