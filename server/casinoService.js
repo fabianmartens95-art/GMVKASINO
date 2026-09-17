@@ -211,15 +211,19 @@ export class CasinoService {
         })
       }
 
-      const rate = this.rateLimiter.consume(session.id)
-      if (!rate.allowed) {
-        this.metrics?.incrementEvent?.('spin.rate_limited')
-        throw new CasinoError(429, 'RATE_LIMITED', 'Too many spins', {
-          retryAfterMs: rate.retryAfterMs,
-        })
-      }
+      return {
+        resolve: async () => {
+          const rate = this.rateLimiter.consume(session.id)
+          if (!rate.allowed) {
+            this.metrics?.incrementEvent?.('spin.rate_limited')
+            throw new CasinoError(429, 'RATE_LIMITED', 'Too many spins', {
+              retryAfterMs: rate.retryAfterMs,
+            })
+          }
 
-      return spin(bet, this.rng)
+          return spin(bet, this.rng)
+        },
+      }
     })
 
     if (!execution) {
