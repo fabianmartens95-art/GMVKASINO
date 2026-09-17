@@ -27,7 +27,6 @@ export function createGameRoundFingerprint({
   decimals = 2,
 } = {}) {
   if (!sessionId) throw new Error('sessionId is required for game-round fingerprinting')
-  if (!gameId) throw new Error('gameId is required for game-round fingerprinting')
 
   const sessionRef = sha256(String(sessionId)).slice(0, 32)
   const betAtomic = decimalToAtomic(bet, decimals)
@@ -35,7 +34,7 @@ export function createGameRoundFingerprint({
     version: 1,
     accountId: String(accountId || ''),
     sessionRef,
-    gameId: String(gameId),
+    gameId: String(gameId ?? ''),
     assetCode: String(assetCode),
     betAtomic,
   })
