@@ -19,6 +19,7 @@ RUN npm ci --omit=dev
 
 COPY --from=build /app/dist ./dist
 COPY server ./server
+COPY scripts ./scripts
 COPY src/config ./src/config
 COPY src/game ./src/game
 
