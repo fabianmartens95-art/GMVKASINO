@@ -13,6 +13,10 @@
     "ledger:reconcile": "node scripts/reconcile-ledger.mjs",
     "start": "node server/index.js",
     "smoke": "node scripts/smoke.mjs",
+    "staging:e2e": "node scripts/staging-money-flow.mjs",
+    "gate:blockers": "node scripts/check-production-blockers.mjs",
+    "gate:evaluate": "node scripts/evaluate-production-gate.mjs",
+    "prod:revision:verify": "node scripts/verify-production-revision.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
