@@ -1,6 +1,11 @@
-import { createHash, randomUUID } from 'node:crypto'
+import { createHash } from 'node:crypto'
 import { GAMES, getGameById } from '../src/config/games.js'
 import { spin } from '../src/game/slotEngine.js'
+import {
+  createGameRoundFingerprint,
+  idempotencyRef,
+  normalizeIdempotencyKey,
+} from './gameRound.js'
 
 function sessionRef(sessionId) {
   if (!sessionId) return null
@@ -20,6 +25,7 @@ export class CasinoError extends Error {
 export class CasinoService {
   constructor({
     sessionStore,
+    gameRoundStore = sessionStore,
     rateLimiter,
     auditLog,
     rng,
@@ -28,6 +34,7 @@ export class CasinoService {
     authRateLimiter = null,
   } = {}) {
     this.sessionStore = sessionStore
+    this.gameRoundStore = gameRoundStore
     this.rateLimiter = rateLimiter
     this.auditLog = auditLog
     this.rng = rng
@@ -131,7 +138,14 @@ export class CasinoService {
     return true
   }
 
-  async spin({ sessionId, gameId, bet, accountId = null }) {
+  async spin({
+    sessionId,
+    gameId,
+    bet,
+    accountId = null,
+    idempotencyKey,
+    requestId = null,
+  }) {
     let session
     try {
       session = await this.getSession(sessionId, { accountId })
@@ -142,70 +156,130 @@ export class CasinoService {
       throw error
     }
 
-    const game = getGameById(gameId)
-
-    if (!game || game.status !== 'playable') {
-      this.metrics?.incrementEvent?.('spin.game_unavailable')
-      throw new CasinoError(404, 'GAME_UNAVAILABLE', 'Game is not available')
+    const normalizedIdempotencyKey = normalizeIdempotencyKey(idempotencyKey)
+    if (!normalizedIdempotencyKey) {
+      this.metrics?.incrementEvent?.('spin.idempotency_key_invalid')
+      throw new CasinoError(
+        400,
+        'IDEMPOTENCY_KEY_REQUIRED',
+        'A valid Idempotency-Key header is required for spins',
+      )
     }
 
-    if (!Number.isFinite(bet) || !game.allowedBets?.includes(bet)) {
+    if (!Number.isFinite(bet) || bet <= 0) {
       this.metrics?.incrementEvent?.('spin.invalid_bet')
-      throw new CasinoError(400, 'INVALID_BET', 'Bet is not allowed', {
-        allowedBets: game.allowedBets || [],
-      })
+      throw new CasinoError(400, 'INVALID_BET', 'Bet is not allowed')
     }
 
-    if (session.balance < bet) {
+    const asset = session.wallet?.asset || { code: 'DEMO', decimals: 2 }
+    let roundContext
+    try {
+      roundContext = createGameRoundFingerprint({
+        accountId: session.accountId || '',
+        sessionId: session.id,
+        gameId,
+        bet,
+        assetCode: asset.code,
+        decimals: asset.decimals,
+      })
+    } catch {
+      this.metrics?.incrementEvent?.('spin.invalid_bet')
+      throw new CasinoError(400, 'INVALID_BET', 'Bet is not allowed')
+    }
+
+    const execution = await this.gameRoundStore.executeGameRound(session.id, {
+      bet,
+      betAtomic: roundContext.betAtomic,
+      gameId,
+      accountId,
+      assetCode: asset.code,
+      idempotencyKey: normalizedIdempotencyKey,
+      fingerprint: roundContext.fingerprint,
+      sessionRef: roundContext.sessionRef,
+      requestId,
+    }, async () => {
+      const game = getGameById(gameId)
+      if (!game || game.status !== 'playable') {
+        this.metrics?.incrementEvent?.('spin.game_unavailable')
+        throw new CasinoError(404, 'GAME_UNAVAILABLE', 'Game is not available')
+      }
+
+      if (!game.allowedBets?.includes(bet)) {
+        this.metrics?.incrementEvent?.('spin.invalid_bet')
+        throw new CasinoError(400, 'INVALID_BET', 'Bet is not allowed', {
+          allowedBets: game.allowedBets || [],
+        })
+      }
+
+      const rate = this.rateLimiter.consume(session.id)
+      if (!rate.allowed) {
+        this.metrics?.incrementEvent?.('spin.rate_limited')
+        throw new CasinoError(429, 'RATE_LIMITED', 'Too many spins', {
+          retryAfterMs: rate.retryAfterMs,
+        })
+      }
+
+      return spin(bet, this.rng)
+    })
+
+    if (!execution) {
+      this.metrics?.incrementEvent?.('spin.session_missing')
+      throw new CasinoError(401, 'SESSION_REQUIRED', 'Demo session is missing, expired, or not authorized')
+    }
+
+    const auditContext = {
+      requestId,
+      sessionRef: sessionRef(session.id),
+      accountId: session.accountId || null,
+      gameId,
+      bet,
+      idempotencyRef: idempotencyRef(normalizedIdempotencyKey),
+    }
+
+    if (execution.conflict) {
+      this.metrics?.incrementEvent?.('spin.idempotency_conflict')
+      this.auditLog.record('game_round.idempotency_conflict', {
+        ...auditContext,
+        roundId: execution.roundId,
+      })
+      throw new CasinoError(
+        409,
+        'IDEMPOTENCY_CONFLICT',
+        'Idempotency key was already used for a different game-round request',
+        { roundId: execution.roundId },
+      )
+    }
+
+    if (execution.insufficient) {
       this.metrics?.incrementEvent?.('spin.insufficient_credits')
       throw new CasinoError(409, 'INSUFFICIENT_DEMO_CREDITS', 'Not enough demo credits')
     }
 
-    const rate = this.rateLimiter.consume(session.id)
-    if (!rate.allowed) {
-      this.metrics?.incrementEvent?.('spin.rate_limited')
-      throw new CasinoError(429, 'RATE_LIMITED', 'Too many spins', {
-        retryAfterMs: rate.retryAfterMs,
+    const result = execution.response
+    if (execution.replayed) {
+      this.metrics?.incrementEvent?.('spin.replayed')
+      this.auditLog.record('game_round.replayed', {
+        ...auditContext,
+        roundId: result.roundId,
+        payout: result.totalWin,
+        balance: result.balance,
       })
-    }
-
-    const result = spin(bet, this.rng)
-    const spinId = randomUUID()
-    const updatedSession = await this.sessionStore.applySpin(session.id, {
-      bet,
-      payout: result.totalWin,
-      spinId,
-      gameId,
-      accountId,
-    })
-
-    if (!updatedSession) {
-      this.metrics?.incrementEvent?.('spin.insufficient_credits')
-      throw new CasinoError(409, 'INSUFFICIENT_DEMO_CREDITS', 'Demo balance changed before settlement or session is not authorized')
+      return result
     }
 
     this.metrics?.incrementEvent?.('spin.resolved')
     this.metrics?.incrementEvent?.(result.totalWin > 0 ? 'spin.win' : 'spin.no_win')
 
     this.auditLog.record('spin.resolved', {
-      spinId,
-      sessionRef: sessionRef(session.id),
-      accountId: updatedSession.accountId || null,
-      gameId,
-      bet,
+      ...auditContext,
+      roundId: result.roundId,
+      spinId: result.spinId,
       payout: result.totalWin,
-      balance: updatedSession.balance,
+      balance: result.balance,
       winLines: result.wins.map((win) => win.line),
     })
 
-    return {
-      spinId,
-      gameId,
-      bet,
-      ...result,
-      balance: updatedSession.balance,
-      spins: updatedSession.spins,
-    }
+    return result
   }
 
   async ready() {
