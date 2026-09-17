@@ -138,13 +138,92 @@ test('API v1 creates a session, exposes a DEMO wallet and resolves a server-side
         'X-Demo-Session': session.id,
         'X-Request-Id': 'qa-request-1234',
       },
-      body: JSON.stringify({ gameId: 'golden-vault', bet: 1 }),
+      body: JSON.stringify({ gameId: 'golden-vault', bet: 1, idempotencyKey: 'qa-spin-0001' }),
     })
     assert.equal(spinResponse.status, 200)
     assert.equal(spinResponse.headers.get('x-request-id'), 'qa-request-1234')
     const { result } = await spinResponse.json()
     assert.equal(result.totalWin, 50)
     assert.equal(result.balance, 1049)
+  } finally {
+    await close(server)
+  }
+})
+
+test('spin endpoint requires an idempotency key', async () => {
+  const server = createTestServer()
+  const baseUrl = await listen(server)
+
+  try {
+    const sessionResponse = await fetch(`${baseUrl}/api/v1/session`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ player: 'Idempotency QA' }),
+    })
+    const { session } = await sessionResponse.json()
+
+    const response = await fetch(`${baseUrl}/api/v1/spin`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Demo-Session': session.id,
+      },
+      body: JSON.stringify({ gameId: 'golden-vault', bet: 1 }),
+    })
+
+    assert.equal(response.status, 400)
+    assert.equal((await response.json()).error.code, 'IDEMPOTENCY_KEY_REQUIRED')
+  } finally {
+    await close(server)
+  }
+})
+
+test('spin endpoint replays the original result and rejects fingerprint conflicts', async () => {
+  const server = createTestServer()
+  const baseUrl = await listen(server)
+
+  try {
+    const sessionResponse = await fetch(`${baseUrl}/api/v1/session`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ player: 'Replay QA' }),
+    })
+    const { session } = await sessionResponse.json()
+    const headers = {
+      'Content-Type': 'application/json',
+      'X-Demo-Session': session.id,
+    }
+    const idempotencyKey = 'qa-replay-0001'
+
+    const first = await fetch(`${baseUrl}/api/v1/spin`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ gameId: 'golden-vault', bet: 1, idempotencyKey }),
+    })
+    const firstPayload = await first.json()
+    assert.equal(first.status, 200)
+
+    const replay = await fetch(`${baseUrl}/api/v1/spin`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ gameId: 'golden-vault', bet: 1, idempotencyKey }),
+    })
+    const replayPayload = await replay.json()
+    assert.equal(replay.status, 200)
+    assert.deepEqual(replayPayload.result, firstPayload.result)
+
+    const sessionAfter = await fetch(`${baseUrl}/api/v1/session`, { headers: { 'X-Demo-Session': session.id } })
+    const { session: storedSession } = await sessionAfter.json()
+    assert.equal(storedSession.spins, 1)
+    assert.equal(storedSession.balance, 1049)
+
+    const conflict = await fetch(`${baseUrl}/api/v1/spin`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ gameId: 'golden-vault', bet: 2, idempotencyKey }),
+    })
+    assert.equal(conflict.status, 409)
+    assert.equal((await conflict.json()).error.code, 'IDEMPOTENCY_CONFLICT')
   } finally {
     await close(server)
   }
@@ -162,7 +241,7 @@ test('wallet and spin endpoints require a valid demo session', async () => {
     const response = await fetch(`${baseUrl}/api/v1/spin`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ gameId: 'golden-vault', bet: 1 }),
+      body: JSON.stringify({ gameId: 'golden-vault', bet: 1, idempotencyKey: 'qa-no-session-01' }),
     })
     assert.equal(response.status, 401)
     const payload = await response.json()
