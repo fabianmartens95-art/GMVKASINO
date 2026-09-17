@@ -154,42 +154,51 @@ This document is an engineering standard, not a legal conclusion about which con
 
 ## 11. Current repository assessment (2026-09-17)
 
-Already present in the repository:
+Implemented in the current transaction core:
 
 - server-authoritative spin endpoint and game engine call
-- account authentication and sessions
-- role/capability model
+- account authentication and protected sessions
+- role/capability model with capability enforcement at protected API boundaries
 - PostgreSQL-backed ledger with balanced entries
-- unique ledger idempotency-key field
-- ledger reconciliation
-- audit-event persistence
-- request IDs in HTTP handling
+- exact/atomic persisted amounts and ledger reconciliation
+- durable game-round records with account-scoped idempotency keys and request fingerprints
+- exact stored-response replay for duplicate game-round requests
+- explicit idempotency conflict handling for mismatched retry fingerprints
+- serialized PostgreSQL game-round execution so concurrent duplicate retries do not execute RNG or financial settlement twice
+- append-only PostgreSQL audit-event persistence
+- request-ID correlation for game rounds, capability denials, authentication and session lifecycle
+- opaque hashed references instead of raw bearer/session secrets in auth audit metadata
 - health/readiness endpoints
-- operational metrics
+- structured HTTP logs and operational metrics
 - migrations
-- staging/revision verification
+- staging/revision verification foundations
 - database recovery documentation and restore verification
-- CI and smoke-test foundations
+- CI, smoke-test and container-build foundations
 
-Important remaining P0 gaps:
+The implemented P0 Core covers the current DEMO-money transaction path. This does not make the system ready for real-money operation.
 
-- durable idempotent game-round replay contract at the API/service level
-- stored game-round response/fingerprint so retries do not re-run RNG
-- explicit capability enforcement at every privileged endpoint
-- production-grade event/audit schema coverage for all future financial/admin mutations
+Important remaining P0 Production / launch gaps:
+
+- database and deployment security hardening must be completed against the eventual production environment
+- Admin / Operations Console foundation is not yet implemented
+- monitoring exists, but production error alerting and actionable alert routing are not yet complete
+- staging E2E coverage must be promoted from core/demo flows to every financial domain as those domains are added
+- production promotion/rollback gate is not yet a complete real-money launch gate
+- every future financial/admin mutation must be added to the capability, idempotency and audit coverage matrix before release
 - real-money payment/deposit/withdrawal domain is not yet implemented
-- jurisdiction-specific compliance controls are not yet implemented
-- production promotion gate is not yet a complete real-money launch gate
+- jurisdiction-specific KYC/AML/age/responsible-gaming/privacy/payment controls are not yet implemented
 
 ## 12. Delivery order
 
 ### P0 Core
 
+Current DEMO transaction-core status: implemented and regression-tested. Preserve these as mandatory invariants on every future financial domain.
+
 1. Auth and capability enforcement
 2. Wallet/ledger invariants
 3. Durable idempotent Game Round model
 4. Request fingerprinting + replay/conflict semantics
-5. Audit/event correlation for critical mutations
+5. Audit/event correlation for critical implemented mutations
 
 ### P0 Production
 
