@@ -8,7 +8,7 @@ import { SlidingWindowRateLimiter } from './rateLimiter.js'
 import { AuditLog, PostgresAuditEventStore } from './auditLog.js'
 import { OperationalMetrics } from './operationalMetrics.js'
 import { CasinoService } from './casinoService.js'
-import { createHttpServer } from './httpServer.js'
+import { createOperationsHttpServer } from './operationsHttpServer.js'
 
 const { Pool } = pg
 
@@ -89,7 +89,7 @@ export async function createDefaultService(config = SERVER_CONFIG) {
 
 export async function startServer(config = SERVER_CONFIG) {
   const service = await createDefaultService(config)
-  const server = createHttpServer({
+  const server = createOperationsHttpServer({
     service,
     config,
     metrics: service.metrics,
