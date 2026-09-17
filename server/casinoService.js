@@ -88,7 +88,7 @@ export class CasinoService {
     }))
   }
 
-  async openSession({ sessionId, player, accountId = null } = {}) {
+  async openSession({ sessionId, player, accountId = null, requestId = null } = {}) {
     const result = await this.sessionStore.resumeOrCreate({ sessionId, player, accountId })
     if (!result.session) {
       throw new CasinoError(403, 'ACCOUNT_UNAVAILABLE', 'Account is not available')
@@ -96,6 +96,7 @@ export class CasinoService {
     const event = result.created ? 'session.created' : 'session.resumed'
     this.metrics?.incrementEvent?.(event)
     this.auditLog.record(event, {
+      requestId,
       sessionRef: sessionRef(result.session.id),
       accountId: result.session.accountId || null,
       player: result.session.player || null,
@@ -134,7 +135,7 @@ export class CasinoService {
     }
   }
 
-  async rotateSession(sessionId, { accountId = null } = {}) {
+  async rotateSession(sessionId, { accountId = null, requestId = null } = {}) {
     const rotated = await this.sessionStore.rotate(sessionId, { accountId })
     if (!rotated) {
       throw new CasinoError(401, 'SESSION_REQUIRED', 'Demo session is missing, expired, or not authorized')
@@ -142,6 +143,7 @@ export class CasinoService {
 
     this.metrics?.incrementEvent?.('session.rotated')
     this.auditLog.record('session.rotated', {
+      requestId,
       previousSessionRef: sessionRef(sessionId),
       sessionRef: sessionRef(rotated.id),
       accountId: rotated.accountId || null,
@@ -151,13 +153,14 @@ export class CasinoService {
     return rotated
   }
 
-  async invalidateSession(sessionId, { accountId = null } = {}) {
+  async invalidateSession(sessionId, { accountId = null, requestId = null } = {}) {
     if (!await this.sessionStore.invalidate(sessionId, { accountId })) {
       throw new CasinoError(401, 'SESSION_REQUIRED', 'Demo session is missing, expired, or not authorized')
     }
 
     this.metrics?.incrementEvent?.('session.invalidated')
     this.auditLog.record('session.invalidated', {
+      requestId,
       sessionRef: sessionRef(sessionId),
       accountId,
     })
