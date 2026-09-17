@@ -3,7 +3,8 @@
 Status: Binding delivery model  
 Effective: 2026-09-18  
 Tracking issue: #69  
-Architecture standard: `docs/PRODUCTION_CORE_STANDARD.md`
+Architecture standard: `docs/PRODUCTION_CORE_STANDARD.md`  
+Game parallelization extension: `docs/MULTI_GAME_PARALLEL_STANDARD.md`
 
 ## Purpose
 
@@ -100,6 +101,8 @@ The ledger is the source of truth for money-like state. No domain may mutate an 
 ### Game contract
 
 A game/provider returns a normalized result into the server-authoritative Game Round flow. Providers and browser clients never settle wallets directly. A replay must not regenerate a result or post a second settlement.
+
+Multiple games may be developed concurrently only through the shared Game Registry/adapter contract defined in `docs/MULTI_GAME_PARALLEL_STANDARD.md`. Shared Game Platform changes are serialized; individual game branches may proceed in parallel after that contract is green.
 
 ### Payment contract
 
