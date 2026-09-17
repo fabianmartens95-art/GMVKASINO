@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { GAMES, getGameById } from '../src/config/games.js'
 import { spin } from '../src/game/slotEngine.js'
+import { PostgresGameRoundExecutor } from './postgresGameRoundExecutor.js'
 
 function sessionRef(sessionId) {
   if (!sessionId) return null
@@ -63,6 +64,9 @@ export class CasinoService {
     this.metrics = metrics
     this.authService = authService
     this.authRateLimiter = authRateLimiter
+    this.gameRoundExecutor = sessionStore?.pool && sessionStore?.ledger
+      ? new PostgresGameRoundExecutor({ sessionStore })
+      : null
   }
 
   async checkReadiness() {
@@ -230,35 +234,61 @@ export class CasinoService {
       throw new CasinoError(409, 'INSUFFICIENT_DEMO_CREDITS', 'Not enough demo credits')
     }
 
-    const rate = this.rateLimiter.consume(session.id)
-    if (!rate.allowed) {
-      this.metrics?.incrementEvent?.('spin.rate_limited')
-      throw new CasinoError(429, 'RATE_LIMITED', 'Too many spins', {
-        retryAfterMs: rate.retryAfterMs,
+    let updatedSession
+    let roundResponse = null
+
+    if (this.gameRoundExecutor) {
+      updatedSession = await this.gameRoundExecutor.execute({
+        sessionId: session.id,
+        bet,
+        gameId,
+        accountId,
+        ownerId,
+        idempotencyKey: normalizedIdempotencyKey,
+        requestFingerprint,
+        requestId,
+        resolveResult: async () => {
+          const rate = this.rateLimiter.consume(session.id)
+          if (!rate.allowed) {
+            this.metrics?.incrementEvent?.('spin.rate_limited')
+            throw new CasinoError(429, 'RATE_LIMITED', 'Too many spins', {
+              retryAfterMs: rate.retryAfterMs,
+            })
+          }
+          return spin(bet, this.rng)
+        },
+      })
+    } else {
+      const rate = this.rateLimiter.consume(session.id)
+      if (!rate.allowed) {
+        this.metrics?.incrementEvent?.('spin.rate_limited')
+        throw new CasinoError(429, 'RATE_LIMITED', 'Too many spins', {
+          retryAfterMs: rate.retryAfterMs,
+        })
+      }
+
+      const result = spin(bet, this.rng)
+      const spinId = randomUUID()
+      roundResponse = {
+        spinId,
+        gameId,
+        bet,
+        ...result,
+      }
+
+      updatedSession = await this.sessionStore.applySpin(session.id, {
+        bet,
+        payout: result.totalWin,
+        spinId,
+        gameId,
+        accountId,
+        ownerId,
+        idempotencyKey: normalizedIdempotencyKey,
+        requestFingerprint,
+        roundResponse,
+        requestId,
       })
     }
-
-    const result = spin(bet, this.rng)
-    const spinId = randomUUID()
-    const roundResponse = {
-      spinId,
-      gameId,
-      bet,
-      ...result,
-    }
-
-    const updatedSession = await this.sessionStore.applySpin(session.id, {
-      bet,
-      payout: result.totalWin,
-      spinId,
-      gameId,
-      accountId,
-      ownerId,
-      idempotencyKey: normalizedIdempotencyKey,
-      requestFingerprint,
-      roundResponse,
-      requestId,
-    })
 
     if (updatedSession?.idempotencyConflict) {
       this.metrics?.incrementEvent?.('spin.idempotency_conflict')
