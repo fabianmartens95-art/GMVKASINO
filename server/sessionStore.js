@@ -117,10 +117,10 @@ export class SessionStore {
     gameId,
     idempotencyKey,
     fingerprint,
-  } = {}, resolveResult) {
+  } = {}, prepareResult) {
     const session = this.findMutable(sessionId)
     if (!session) return null
-    if (typeof resolveResult !== 'function') throw new Error('resolveResult is required')
+    if (typeof prepareResult !== 'function') throw new Error('prepareResult is required')
 
     const roundKey = `${session.id}:${idempotencyKey}`
     const existing = this.rounds.get(roundKey)
@@ -133,10 +133,15 @@ export class SessionStore {
       return { replayed: true, response: structuredClone(existing.response) }
     }
 
+    const roundId = randomUUID()
+    const prepared = await prepareResult({ roundId })
+    if (!prepared || typeof prepared.resolve !== 'function') {
+      throw new Error('prepareResult must return a resolve function')
+    }
+
     if (session.balance < bet) return { insufficient: true }
 
-    const roundId = randomUUID()
-    const result = await resolveResult({ roundId })
+    const result = await prepared.resolve()
     session.balance = Number((session.balance - bet + result.totalWin).toFixed(2))
     session.spins += 1
     session.lastSeenAt = this.now()
