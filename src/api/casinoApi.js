@@ -3,6 +3,7 @@ const SESSION_KEY = 'gmvkasino.demo.sessionId'
 const AUTH_KEY = 'gmvkasino.auth.token'
 let memorySessionId = ''
 let memoryAuthToken = ''
+let fallbackIdempotencySequence = 0
 
 function browserStorage(name) {
   if (typeof window === 'undefined') return null
@@ -69,14 +70,24 @@ function writeAuthToken(token) {
   }
 }
 
+function createIdempotencyKey() {
+  const uuid = globalThis.crypto?.randomUUID?.()
+  if (uuid) return `spin-${uuid}`
+
+  fallbackIdempotencySequence += 1
+  return `spin-${Date.now().toString(36)}-${fallbackIdempotencySequence.toString(36)}`
+}
+
 async function request(path, {
   method = 'GET',
   body,
   includeSession = true,
   includeAuth = true,
+  idempotencyKey = '',
 } = {}) {
   const headers = { Accept: 'application/json' }
   if (body !== undefined) headers['Content-Type'] = 'application/json'
+  if (idempotencyKey) headers['Idempotency-Key'] = idempotencyKey
 
   const sessionId = readSessionId()
   if (includeSession && sessionId) headers['X-Demo-Session'] = sessionId
@@ -233,31 +244,29 @@ export async function syncDemoPlayer(player) {
   return openDemoSession({ player })
 }
 
-async function performSpin({ gameId, bet }) {
+async function performSpin({ gameId, bet, idempotencyKey }) {
   const payload = await request('/spin', {
     method: 'POST',
     body: { gameId, bet },
+    idempotencyKey,
   })
   return payload.result
 }
 
 export async function spinDemo({ gameId, bet }) {
+  const idempotencyKey = createIdempotencyKey()
   if (!readSessionId()) await openDemoSession()
 
   try {
-    return await performSpin({ gameId, bet })
+    return await performSpin({ gameId, bet, idempotencyKey })
   } catch (error) {
     if (error.status !== 401 || error.code === 'AUTH_SESSION_REQUIRED') throw error
     writeSessionId('')
     await openDemoSession()
-    return performSpin({ gameId, bet })
+    return performSpin({ gameId, bet, idempotencyKey })
   }
 }
 
 export function clearDemoSession() {
   writeSessionId('')
-}
-
-export function clearAccountAuth() {
-  writeAuthToken('')
 }
