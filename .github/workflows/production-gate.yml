@@ -35,16 +35,8 @@ on:
         description: 'External compliance/licensing evidence or approval reference'
         required: true
         type: string
-      payment_domain_introduced:
-        description: 'Has the deposit/withdrawal domain been introduced?'
-        required: true
-        default: 'false'
-        type: choice
-        options:
-          - 'false'
-          - 'true'
       deposit_idempotency_status:
-        description: 'Deposit idempotency verification when payment domain exists'
+        description: 'Deposit idempotency verification'
         required: true
         default: blocked
         type: choice
@@ -52,7 +44,7 @@ on:
           - blocked
           - passed
       withdrawal_idempotency_status:
-        description: 'Withdrawal idempotency verification when payment domain exists'
+        description: 'Withdrawal idempotency verification'
         required: true
         default: blocked
         type: choice
@@ -199,7 +191,7 @@ jobs:
           GATE_ROLLBACK_EVIDENCE: ${{ inputs.rollback_evidence }}
           GATE_COMPLIANCE_STATUS: ${{ inputs.compliance_status }}
           GATE_COMPLIANCE_EVIDENCE: ${{ inputs.compliance_evidence }}
-          GATE_PAYMENT_DOMAIN_INTRODUCED: ${{ inputs.payment_domain_introduced }}
+          GATE_PAYMENT_DOMAIN_INTRODUCED: 'true'
           GATE_DEPOSIT_IDEMPOTENCY_STATUS: ${{ inputs.deposit_idempotency_status }}
           GATE_WITHDRAWAL_IDEMPOTENCY_STATUS: ${{ inputs.withdrawal_idempotency_status }}
         run: npm run gate:evaluate
@@ -216,6 +208,8 @@ jobs:
             echo "- Production exact revision: passed"
             echo "- Production smoke: passed"
             echo "- Production mode before activation: demo"
+            echo "- Deposit idempotency evidence: passed"
+            echo "- Withdrawal idempotency evidence: passed"
             echo "- Manual security/financial evidence: provided"
             echo "- Monitoring evidence: provided"
             echo "- Rollback evidence: provided"
