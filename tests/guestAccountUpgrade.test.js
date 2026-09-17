@@ -81,6 +81,7 @@ integrationTest('guest registration upgrades the existing account without re-cre
       headers: {
         'Content-Type': 'application/json',
         'X-Demo-Session': guest.id,
+        'Idempotency-Key': `guest-spin-${randomUUID()}`,
       },
       body: JSON.stringify({ gameId: 'golden-vault', bet: 1 }),
     })
@@ -154,6 +155,7 @@ integrationTest('guest registration upgrades the existing account without re-cre
         'Content-Type': 'application/json',
         Authorization: `Bearer ${upgraded.auth.token}`,
         'X-Demo-Session': guest.id,
+        'Idempotency-Key': `registered-spin-${randomUUID()}`,
       },
       body: JSON.stringify({ gameId: 'golden-vault', bet: 1 }),
     })
