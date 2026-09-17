@@ -187,3 +187,16 @@ Do not create:
 The existing payment domain remains sandbox/demo only. Provider abstractions may be built and tested with fake/sandbox adapters, but real money, real crypto assets, custody, addresses or production payment credentials are not activated merely because the software path exists.
 
 Activation remains subordinate to Gate C and the selected jurisdiction/licensing/compliance architecture.
+
+
+## Integration record — Wave 1 (2026-09-18)
+
+First autonomous parallel wave:
+
+- #78 Identity security readiness state
+- #79 Financial integrity matrix
+- #80 Player account/security surface
+- #81 Provider-neutral sandbox payment event adapter
+- #82 Synthetic load/concurrency harness
+
+Each stream passed its isolated PR CI gate before merge. This integration record PR exists to run the complete CI/reconciliation/recovery/build/smoke pipeline once more against the combined `main` state.
