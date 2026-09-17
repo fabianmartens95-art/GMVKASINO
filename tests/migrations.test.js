@@ -28,7 +28,8 @@ integrationTest('database migrations are tracked and idempotent', async () => {
          '003_account_auth.sql',
          '004_remove_session_balance.sql',
          '005_account_roles.sql',
-         '006_audit_events.sql'
+         '006_audit_events.sql',
+         '007_game_rounds.sql'
        )
        ORDER BY name`,
     )
@@ -41,6 +42,7 @@ integrationTest('database migrations are tracked and idempotent', async () => {
         '004_remove_session_balance.sql',
         '005_account_roles.sql',
         '006_audit_events.sql',
+        '007_game_rounds.sql',
       ],
     )
 
@@ -52,6 +54,14 @@ integrationTest('database migrations are tracked and idempotent', async () => {
          AND column_name = 'balance'`,
     )
     assert.equal(legacyBalanceColumn.rowCount, 0)
+
+    const gameRoundsTable = await pool.query(
+      `SELECT 1
+       FROM information_schema.tables
+       WHERE table_schema = 'public'
+         AND table_name = 'game_rounds'`,
+    )
+    assert.equal(gameRoundsTable.rowCount, 1)
 
     const auditId = randomUUID()
     await pool.query(
@@ -115,6 +125,7 @@ integrationTest('legacy M5 sessions preserve value and history across ledger boo
       '004_remove_session_balance.sql',
       '005_account_roles.sql',
       '006_audit_events.sql',
+      '007_game_rounds.sql',
     ])
 
     const session = await legacyPool.query(
@@ -206,6 +217,15 @@ integrationTest('legacy M5 sessions preserve value and history across ledger boo
       [schema],
     )
     assert.equal(auditTable.rowCount, 1)
+
+    const gameRoundsTable = await admin.query(
+      `SELECT 1
+       FROM information_schema.tables
+       WHERE table_schema = $1
+         AND table_name = 'game_rounds'`,
+      [schema],
+    )
+    assert.equal(gameRoundsTable.rowCount, 1)
 
     const secondPass = await runMigrations({ pool: legacyPool })
     assert.deepEqual(secondPass, [])
