@@ -13,6 +13,42 @@ The binding architecture order remains:
 
 `Identity -> Authorization/Capabilities -> server-authoritative Business Logic -> Event/Audit Trail -> Idempotency -> Database -> Observability -> Recovery`
 
+## Autonomous Parallel Build Loop
+
+GMVKASINO adopts the GMVGANG `Autonomous Parallel Build Loop V1` as its default execution model, extended by the stricter financial/security controls in this document.
+
+Every implementation stream follows:
+
+`Scope -> Branch -> Implementation -> Tests -> Self-Review -> optional AI Second Review -> PR -> CI -> Merge Gate -> Smoke Test -> Documentation`
+
+### Operating rules
+
+- Keep at most 3-5 implementation streams actively changing code at the same time, even though seven workstreams exist.
+- Prefer independent files/modules/contracts so active streams do not compete for the same shared core.
+- Shared-core changes are serialized: merge the foundation change first, then update/rebase dependent streams.
+- Every task must have explicit scope, acceptance criteria, dependencies, owned files/contracts and a clear done condition.
+- ChatGPT acts as orchestration/execution layer: decomposes approved work, coordinates branches/PRs/tests/reviews, detects conflicts and prepares the next executable work.
+- Founder involvement is reserved primarily for product/pricing choices, irreversible decisions, external-provider commitments, legal/compliance decisions and production/real-money gates.
+- Routine implementation, testing, review, documentation and non-irreversible technical decisions should proceed without unnecessary founder interruption.
+
+### Casino critical-mutation extension
+
+Any work that can change money-like state, game settlement, payment state, account privilege or compliance state must additionally pass:
+
+`Idempotency/Replay -> Concurrency Safety -> Capability Enforcement -> Audit/Request Correlation -> Ledger Integrity -> Reconciliation`
+
+A stream is not considered complete merely because the UI works or a happy-path test passes.
+
+### Scheduling rule
+
+Seven workstreams may remain open, but only 3-5 should normally be in active implementation simultaneously. Blocked or review-only streams do not consume an implementation slot.
+
+When a stream is blocked on a shared primitive, it should either:
+1. switch to contract-safe frontend/test/documentation work, or
+2. yield its active slot to the next Ready stream.
+
+This is the default execution policy for future GMVKASINO development unless explicitly overridden for a specific task.
+
 ## Workstreams
 
 | Stream | Tracking | Owns | Must not own |
