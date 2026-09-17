@@ -10,11 +10,14 @@ export const ACCOUNT_ROLES = Object.freeze([
 const ROLE_CAPABILITIES = Object.freeze({
   player: Object.freeze([
     'casino.play',
+    'payments.sandbox.create',
+    'payments.sandbox.read',
     'profile.read',
     'wallet.read',
   ]),
   support: Object.freeze([
     'operations.read',
+    'payments.sandbox.read',
     'player.read',
     'profile.read',
     'session.read',
@@ -22,6 +25,7 @@ const ROLE_CAPABILITIES = Object.freeze({
   compliance: Object.freeze([
     'audit.read',
     'operations.read',
+    'payments.sandbox.read',
     'player.read',
     'risk.review',
     'session.read',
@@ -29,6 +33,8 @@ const ROLE_CAPABILITIES = Object.freeze({
   finance: Object.freeze([
     'ledger.read',
     'operations.read',
+    'payments.sandbox.manage',
+    'payments.sandbox.read',
     'reconciliation.read',
   ]),
   admin: Object.freeze(['*']),
