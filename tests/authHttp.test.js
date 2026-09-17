@@ -18,6 +18,7 @@ function integrationTest(name, fn) {
 }
 
 async function resetAuthData(pool) {
+  await pool.query('DELETE FROM game_rounds')
   await pool.query('DELETE FROM auth_sessions')
   await pool.query('DELETE FROM demo_sessions')
   await pool.query('DELETE FROM ledger_entries')
@@ -99,6 +100,7 @@ integrationTest('auth HTTP flow binds gameplay to the registered account and rej
       headers: {
         'Content-Type': 'application/json',
         'X-Demo-Session': registered.session.id,
+        'Idempotency-Key': 'auth-http-unauthenticated-spin',
       },
       body: JSON.stringify({ gameId: 'golden-vault', bet: 1 }),
     })
@@ -123,6 +125,7 @@ integrationTest('auth HTTP flow binds gameplay to the registered account and rej
         'Content-Type': 'application/json',
         Authorization: `Bearer ${secondAccount.auth.token}`,
         'X-Demo-Session': registered.session.id,
+        'Idempotency-Key': 'auth-http-mismatched-spin',
       },
       body: JSON.stringify({ gameId: 'golden-vault', bet: 1 }),
     })
@@ -135,12 +138,14 @@ integrationTest('auth HTTP flow binds gameplay to the registered account and rej
         'Content-Type': 'application/json',
         Authorization: `Bearer ${registered.auth.token}`,
         'X-Demo-Session': registered.session.id,
+        'Idempotency-Key': 'auth-http-authenticated-spin',
       },
       body: JSON.stringify({ gameId: 'golden-vault', bet: 1 }),
     })
     assert.equal(authenticatedSpin.status, 200)
     const spin = await authenticatedSpin.json()
     assert.equal(spin.result.balance, 1049)
+    assert.ok(spin.result.roundId)
 
     const meResponse = await fetch(`${baseUrl}/api/v1/auth/me`, {
       headers: { Authorization: `Bearer ${registered.auth.token}` },
