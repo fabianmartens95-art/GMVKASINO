@@ -10,7 +10,7 @@ A production deployment may exist in **demo mode** before the gate passes. Real-
 
 ## Machine-readable policy
 
-`config/production-gate.json` defines the required statuses, evidence and conditional payment checks. `npm run gate:evaluate` evaluates that policy and exits non-zero whenever a required check is missing or failed.
+`config/production-gate.json` defines the required statuses, evidence and payment checks. `npm run gate:evaluate` evaluates that policy and exits non-zero whenever a required check is missing or failed.
 
 The policy is deliberately fail-closed: missing evidence is a failure, not a warning.
 
@@ -28,7 +28,7 @@ The `Real-Money Production Gate` workflow requires:
 8. The exact revision is deployed to production while production still reports `mode: demo`.
 9. Remote production smoke checks pass against that promoted revision.
 
-Existing `ci.yml` already executes the repository's security audit, migrations, test suite, demo-ledger reconciliation, PostgreSQL dump/restore verification, frontend build, local smoke check and container build. The production gate verifies successful CI evidence for the exact revision rather than silently substituting a different commit.
+Existing `ci.yml` executes the repository's security audit, migrations, test suite, demo-ledger reconciliation, PostgreSQL dump/restore verification, frontend build, local smoke check and container build. The production gate verifies successful CI evidence for the exact revision rather than silently substituting a different commit.
 
 ## Production blockers
 
@@ -56,14 +56,18 @@ A compliance approval input without a non-empty evidence reference fails the gat
 
 ## Payments
 
-The current platform remains demo-only and does not yet introduce a deposit/withdrawal domain. `GATE_PAYMENT_DOMAIN_INTRODUCED=false` therefore leaves deposit/withdrawal idempotency checks inactive.
+The codebase now contains a **sandbox-only** deposit/withdrawal domain for the DEMO asset. It does not connect to a real payment provider and it cannot activate fiat, crypto, card, bank or blockchain money movement.
 
-As soon as deposits or withdrawals are introduced, set the flag to `true`. The gate then requires both:
+Because the payment domain exists, the production workflow now supplies `GATE_PAYMENT_DOMAIN_INTRODUCED=true` automatically. Operators cannot mark the domain as absent to bypass payment integrity checks.
+
+The gate therefore always requires both:
 
 - deposit idempotency status = `passed`
 - withdrawal idempotency status = `passed`
 
-A payment-domain implementation must not bypass or remove these conditional checks.
+The sandbox payment service covers persistent payment state, create-request idempotency, event replay deduplication, withdrawal reservation and balanced DEMO-ledger settlement. Those tests are necessary engineering evidence, but they are not by themselves proof of production payment-provider, legal, KYC/AML, custody or licensing readiness.
+
+See `docs/SANDBOX_PAYMENTS.md` for the current payment-domain contract.
 
 ## Promotion and activation
 

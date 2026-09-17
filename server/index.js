@@ -8,7 +8,8 @@ import { SlidingWindowRateLimiter } from './rateLimiter.js'
 import { AuditLog, PostgresAuditEventStore } from './auditLog.js'
 import { OperationalMetrics } from './operationalMetrics.js'
 import { CasinoService } from './casinoService.js'
-import { createOperationsHttpServer } from './operationsHttpServer.js'
+import { SandboxPaymentService } from './sandboxPaymentService.js'
+import { createSandboxPaymentHttpServer } from './sandboxPaymentHttpServer.js'
 
 const { Pool } = pg
 
@@ -67,17 +68,18 @@ export async function createDefaultService(config = SERVER_CONFIG) {
   const auditStore = config.databaseUrl && sessionStore.pool
     ? new PostgresAuditEventStore({ pool: sessionStore.pool })
     : null
+  const auditLog = new AuditLog({
+    maxEvents: config.auditMaxEvents,
+    store: auditStore,
+  })
 
-  return new CasinoService({
+  const service = new CasinoService({
     sessionStore,
     rateLimiter: new SlidingWindowRateLimiter({
       limit: config.rateLimitMaxSpins,
       windowMs: config.rateLimitWindowMs,
     }),
-    auditLog: new AuditLog({
-      maxEvents: config.auditMaxEvents,
-      store: auditStore,
-    }),
+    auditLog,
     metrics,
     authService,
     authRateLimiter: new SlidingWindowRateLimiter({
@@ -85,16 +87,26 @@ export async function createDefaultService(config = SERVER_CONFIG) {
       windowMs: config.authRateLimitWindowMs,
     }),
   })
+
+  service.paymentService = config.databaseUrl && sessionStore.pool
+    ? new SandboxPaymentService({
+        pool: sessionStore.pool,
+        auditLog,
+      })
+    : null
+
+  return service
 }
 
 export async function startServer(config = SERVER_CONFIG) {
   const service = await createDefaultService(config)
-  const server = createOperationsHttpServer({
+  const server = createSandboxPaymentHttpServer({
     service,
     config,
     metrics: service.metrics,
     authService: service.authService,
     authRateLimiter: service.authRateLimiter,
+    paymentService: service.paymentService,
   })
 
   server.listen(config.port, config.host, () => {

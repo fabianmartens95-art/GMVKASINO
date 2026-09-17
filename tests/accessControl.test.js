@@ -15,6 +15,10 @@ test('account roles are normalized and de-duplicated', () => {
 
 test('role capabilities are deny-by-default and admin can access every capability', () => {
   assert.equal(anyRoleHasCapability(['player'], 'casino.play'), true)
+  assert.equal(anyRoleHasCapability(['player'], 'payments.sandbox.create'), true)
+  assert.equal(anyRoleHasCapability(['player'], 'payments.sandbox.manage'), false)
+  assert.equal(anyRoleHasCapability(['provider'], 'payments.sandbox.read'), false)
+  assert.equal(anyRoleHasCapability(['finance'], 'payments.sandbox.manage'), true)
   assert.equal(anyRoleHasCapability(['player'], 'ledger.read'), false)
   assert.equal(anyRoleHasCapability([], 'casino.play'), false)
   assert.equal(anyRoleHasCapability(['admin'], 'future.capability'), true)
@@ -27,6 +31,9 @@ test('access context exposes the effective role and capability set', () => {
       'casino.play',
       'ledger.read',
       'operations.read',
+      'payments.sandbox.create',
+      'payments.sandbox.manage',
+      'payments.sandbox.read',
       'profile.read',
       'reconciliation.read',
       'wallet.read',
