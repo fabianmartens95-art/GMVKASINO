@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { GAMES, getGameById } from '../src/config/games.js'
-import { spin } from '../src/game/slotEngine.js'
+import { createDefaultGameRegistry, GameAdapterContractError } from './gameRegistry.js'
 import { PostgresGameRoundExecutor } from './postgresGameRoundExecutor.js'
 
 function sessionRef(sessionId) {
@@ -53,6 +53,7 @@ export class CasinoService {
     rateLimiter,
     auditLog,
     rng,
+    gameRegistry = null,
     metrics = null,
     authService = null,
     authRateLimiter = null,
@@ -61,6 +62,7 @@ export class CasinoService {
     this.rateLimiter = rateLimiter
     this.auditLog = auditLog
     this.rng = rng
+    this.gameRegistry = gameRegistry || createDefaultGameRegistry()
     this.metrics = metrics
     this.authService = authService
     this.authRateLimiter = authRateLimiter
@@ -86,6 +88,31 @@ export class CasinoService {
       ...game,
       allowedBets: game.allowedBets ? [...game.allowedBets] : [],
     }))
+  }
+
+  async resolveGameResult({ game, bet, requestId = null } = {}) {
+    try {
+      return await this.gameRegistry.resolve(game.id, {
+        bet,
+        rng: this.rng,
+        game: Object.freeze({ ...game }),
+        requestId,
+      })
+    } catch (error) {
+      if (!(error instanceof GameAdapterContractError)) throw error
+
+      this.metrics?.incrementEvent?.('game.contract_rejected')
+      this.auditLog.record('game.contract_rejected', {
+        requestId,
+        gameId: game?.id || null,
+        contractCode: error.code,
+      })
+      throw new CasinoError(
+        500,
+        'GAME_RESULT_INVALID',
+        'Game result failed server contract validation',
+      )
+    }
   }
 
   async openSession({ sessionId, player, accountId = null, requestId = null } = {}) {
@@ -192,6 +219,11 @@ export class CasinoService {
       throw new CasinoError(404, 'GAME_UNAVAILABLE', 'Game is not available')
     }
 
+    if (!this.gameRegistry.has(gameId)) {
+      this.metrics?.incrementEvent?.('spin.game_adapter_missing')
+      throw new CasinoError(503, 'GAME_ADAPTER_UNAVAILABLE', 'Game adapter is not available')
+    }
+
     if (!Number.isFinite(bet) || !game.allowedBets?.includes(bet)) {
       this.metrics?.incrementEvent?.('spin.invalid_bet')
       throw new CasinoError(400, 'INVALID_BET', 'Bet is not allowed', {
@@ -258,7 +290,7 @@ export class CasinoService {
               retryAfterMs: rate.retryAfterMs,
             })
           }
-          return spin(bet, this.rng)
+          return this.resolveGameResult({ game, bet, requestId })
         },
       })
     } else {
@@ -270,7 +302,7 @@ export class CasinoService {
         })
       }
 
-      const result = spin(bet, this.rng)
+      const result = await this.resolveGameResult({ game, bet, requestId })
       const spinId = randomUUID()
       roundResponse = {
         spinId,
@@ -339,7 +371,7 @@ export class CasinoService {
       bet,
       payout: response.totalWin,
       balance: response.balance,
-      winLines: response.wins.map((win) => win.line),
+      winLines: Array.isArray(response.wins) ? response.wins.map((win) => win.line) : [],
       idempotencyRef: idempotencyRef(normalizedIdempotencyKey),
     })
 
