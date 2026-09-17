@@ -38,6 +38,8 @@ integrationTest('account registration hashes credentials and auth tokens while p
     assert.equal(registered.account.email, 'player.one@example.com')
     assert.equal(registered.account.displayName, 'Player One')
     assert.deepEqual(registered.account.roles, ['player'])
+    assert.equal(registered.account.emailVerified, false)
+    assert.equal(registered.account.mfaEnrolled, false)
     assert.equal(registered.wallet.balance, 1000)
     assert.equal(registered.wallet.accountId, registered.account.id)
     assert.ok(registered.auth.token.length >= 40)
