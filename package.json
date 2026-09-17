@@ -18,7 +18,8 @@
     "gate:blockers": "node scripts/check-production-blockers.mjs",
     "gate:evaluate": "node scripts/evaluate-production-gate.mjs",
     "prod:revision:verify": "node scripts/verify-production-revision.mjs",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "load:staging": "node scripts/load-test.mjs"
   },
   "dependencies": {
     "pg": "8.23.0",
