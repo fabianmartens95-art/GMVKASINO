@@ -25,6 +25,11 @@ function formatUptime(value) {
   return `${hours}h ${minutes}m`
 }
 
+function paymentStatusRows(payments) {
+  return Object.entries(payments?.countsByStatus || {})
+    .sort(([a], [b]) => a.localeCompare(b))
+}
+
 export default function OperationsConsole({ onExit }) {
   const [overview, setOverview] = useState(null)
   const [email, setEmail] = useState('')
@@ -33,6 +38,7 @@ export default function OperationsConsole({ onExit }) {
   const [error, setError] = useState('')
 
   const requestTotals = useMemo(() => aggregateRequests(overview?.metrics), [overview])
+  const payments = overview?.payments || null
 
   async function refresh() {
     setError('')
@@ -171,6 +177,7 @@ export default function OperationsConsole({ onExit }) {
           <span>Revision {shortRevision(overview?.revision)}</span>
           <span>Persistence {overview?.persistence || 'unknown'}</span>
           <span>{overview?.readOnly ? 'Read-only enforced' : 'Unknown mode'}</span>
+          {payments && <span>Payments {payments.ok ? 'reconciled' : 'anomaly detected'}</span>}
         </div>
 
         <div className="ops-grid">
@@ -194,7 +201,62 @@ export default function OperationsConsole({ onExit }) {
             <strong>{formatUptime(overview?.metrics?.uptimeMs)}</strong>
             <small>Metrics retention: {overview?.metrics?.retention || 'unknown'}</small>
           </article>
+          <article className="ops-card">
+            <span>Sandbox Payments</span>
+            <strong>{Number(payments?.operationsChecked || 0)}</strong>
+            <small>{Number(payments?.countsByKind?.deposit || 0)} deposits · {Number(payments?.countsByKind?.withdrawal || 0)} withdrawals</small>
+          </article>
+          <article className="ops-card">
+            <span>Payment Reconciliation</span>
+            <strong>{payments?.ok ? 'HEALTHY' : payments ? 'ANOMALY' : 'N/A'}</strong>
+            <small>{Number(payments?.mismatchCount || 0)} mismatches · read-only check</small>
+          </article>
         </div>
+
+        {payments && (
+          <section className="ops-table-section">
+            <div className="ops-section-heading">
+              <h2>Sandbox Payment Health</h2>
+              <span>{payments.checkedAt ? new Date(payments.checkedAt).toLocaleString() : ''}</span>
+            </div>
+            <div className="ops-table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Status</th>
+                    <th>Operations</th>
+                    <th>Operation mismatches</th>
+                    <th>Transaction mismatches</th>
+                    <th>Event mismatches</th>
+                    <th>Reserve mismatches</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {paymentStatusRows(payments).map(([status, count], index) => (
+                    <tr key={status}>
+                      <td>{status}</td>
+                      <td>{count}</td>
+                      <td>{index === 0 ? payments.mismatchCategories?.operations || 0 : ''}</td>
+                      <td>{index === 0 ? payments.mismatchCategories?.transactions || 0 : ''}</td>
+                      <td>{index === 0 ? payments.mismatchCategories?.events || 0 : ''}</td>
+                      <td>{index === 0 ? payments.mismatchCategories?.reserves || 0 : ''}</td>
+                    </tr>
+                  ))}
+                  {paymentStatusRows(payments).length === 0 && (
+                    <tr>
+                      <td>No operations</td>
+                      <td>0</td>
+                      <td>{payments.mismatchCategories?.operations || 0}</td>
+                      <td>{payments.mismatchCategories?.transactions || 0}</td>
+                      <td>{payments.mismatchCategories?.events || 0}</td>
+                      <td>{payments.mismatchCategories?.reserves || 0}</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )}
 
         <section className="ops-table-section">
           <div className="ops-section-heading">
