@@ -95,7 +95,10 @@ export class CasinoService {
       return await this.gameRegistry.resolve(game.id, {
         bet,
         rng: this.rng,
-        game: Object.freeze({ ...game }),
+        game: Object.freeze({
+          ...game,
+          allowedBets: Object.freeze([...(game.allowedBets || [])]),
+        }),
         requestId,
       })
     } catch (error) {
