@@ -1,4 +1,4 @@
-import { randomBytes } from 'node:crypto'
+import { randomBytes, randomUUID } from 'node:crypto'
 
 function cleanPlayer(player) {
   return typeof player === 'string' ? player.trim().slice(0, 40) : ''
@@ -25,6 +25,7 @@ export class SessionStore {
     this.persistence = persistence
     this.metrics = metrics
     this.sessions = new Map()
+    this.rounds = new Map()
 
     for (const session of this.persistence?.load?.() || []) {
       if (session && typeof session.id === 'string') {
@@ -84,6 +85,7 @@ export class SessionStore {
     }
 
     this.sessions.delete(sessionId)
+    this.deleteRoundsForSession(sessionId)
     this.sessions.set(rotated.id, rotated)
     this.persist()
     return this.snapshot(rotated)
@@ -92,7 +94,10 @@ export class SessionStore {
   invalidate(sessionId) {
     if (!sessionId) return false
     const removed = this.sessions.delete(sessionId)
-    if (removed) this.persist()
+    if (removed) {
+      this.deleteRoundsForSession(sessionId)
+      this.persist()
+    }
     return removed
   }
 
@@ -105,6 +110,53 @@ export class SessionStore {
     session.lastSeenAt = this.now()
     this.persist()
     return this.snapshot(session)
+  }
+
+  async executeGameRound(sessionId, {
+    bet,
+    gameId,
+    idempotencyKey,
+    fingerprint,
+  } = {}, resolveResult) {
+    const session = this.findMutable(sessionId)
+    if (!session) return null
+    if (typeof resolveResult !== 'function') throw new Error('resolveResult is required')
+
+    const roundKey = `${session.id}:${idempotencyKey}`
+    const existing = this.rounds.get(roundKey)
+    if (existing) {
+      if (existing.fingerprint !== fingerprint) {
+        return { conflict: true, roundId: existing.response.roundId }
+      }
+      session.lastSeenAt = this.now()
+      this.persist()
+      return { replayed: true, response: structuredClone(existing.response) }
+    }
+
+    if (session.balance < bet) return { insufficient: true }
+
+    const roundId = randomUUID()
+    const result = await resolveResult({ roundId })
+    session.balance = Number((session.balance - bet + result.totalWin).toFixed(2))
+    session.spins += 1
+    session.lastSeenAt = this.now()
+
+    const response = {
+      roundId,
+      spinId: roundId,
+      gameId,
+      bet,
+      ...result,
+      balance: session.balance,
+      spins: session.spins,
+    }
+
+    this.rounds.set(roundKey, {
+      fingerprint,
+      response: structuredClone(response),
+    })
+    this.persist()
+    return { replayed: false, response }
   }
 
   async checkReadiness() {
@@ -120,6 +172,7 @@ export class SessionStore {
 
     if (this.isExpired(session)) {
       this.sessions.delete(sessionId)
+      this.deleteRoundsForSession(sessionId)
       this.persist()
       this.metrics?.incrementEvent?.('session.expired')
       return null
@@ -133,6 +186,7 @@ export class SessionStore {
     for (const [sessionId, session] of this.sessions.entries()) {
       if (this.isExpired(session)) {
         this.sessions.delete(sessionId)
+        this.deleteRoundsForSession(sessionId)
         expired += 1
       }
     }
@@ -147,6 +201,13 @@ export class SessionStore {
     const idleExpired = timestamp - session.lastSeenAt > this.idleTtlMs
     const absoluteExpired = timestamp - session.createdAt > this.absoluteTtlMs
     return idleExpired || absoluteExpired
+  }
+
+  deleteRoundsForSession(sessionId) {
+    const prefix = `${sessionId}:`
+    for (const key of this.rounds.keys()) {
+      if (key.startsWith(prefix)) this.rounds.delete(key)
+    }
   }
 
   persist() {
