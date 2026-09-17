@@ -23,7 +23,7 @@ test('default registry resolves Golden Vault through the shared adapter contract
 
 test('normalized game results cannot override server-authoritative round fields', () => {
   const result = normalizeGameResult({
-    totalWin: 12.345,
+    totalWin: 12.34,
     outcome: { multiplier: 2.5 },
     spinId: 'provider-controlled-spin',
     gameId: 'provider-controlled-game',
@@ -35,9 +35,17 @@ test('normalized game results cannot override server-authoritative round fields'
   })
 
   assert.deepEqual(result, {
-    totalWin: 12.35,
+    totalWin: 12.34,
     outcome: { multiplier: 2.5 },
   })
+})
+
+test('registry rejects payout precision beyond the DEMO asset scale', () => {
+  assert.throws(
+    () => normalizeGameResult({ totalWin: 1.001 }),
+    (error) => error instanceof GameAdapterContractError
+      && error.code === 'GAME_ADAPTER_CONTRACT_ERROR',
+  )
 })
 
 test('registry rejects malformed or negative game outcomes fail-closed', async () => {
