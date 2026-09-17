@@ -9,6 +9,8 @@ import { AuditLog } from '../server/auditLog.js'
 import { CasinoService } from '../server/casinoService.js'
 import { createHttpServer } from '../server/httpServer.js'
 
+let spinSequence = 0
+
 function createTestServer({
   startingBalance = 1000,
   sessionTtlMs = 86_400_000,
@@ -66,12 +68,13 @@ async function openSession(baseUrl, player = 'QA') {
   return (await response.json()).session
 }
 
-async function spin(baseUrl, sessionId, body) {
+async function spin(baseUrl, sessionId, body, idempotencyKey = `edge-spin-${++spinSequence}`) {
   return fetch(`${baseUrl}/api/spin`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'X-Demo-Session': sessionId,
+      'Idempotency-Key': idempotencyKey,
     },
     body: JSON.stringify(body),
   })
