@@ -1,0 +1,255 @@
+.cashier-shell {
+  min-height: 100vh;
+  padding: 32px;
+  background: #080a0f;
+  color: #f6f7fb;
+}
+
+.cashier-panel {
+  width: min(1180px, 100%);
+  margin: 0 auto;
+  padding: 28px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 20px;
+  background: rgba(17, 20, 29, 0.97);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.34);
+}
+
+.cashier-centered {
+  min-height: 320px;
+  display: grid;
+  place-content: center;
+  text-align: center;
+}
+
+.cashier-auth-panel {
+  max-width: 650px;
+  display: grid;
+  gap: 22px;
+}
+
+.cashier-kicker {
+  display: inline-block;
+  margin-bottom: 8px;
+  color: #c7cad6;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.15em;
+}
+
+.cashier-panel h1,
+.cashier-panel h2,
+.cashier-panel p {
+  margin-top: 0;
+}
+
+.cashier-panel h1 {
+  margin-bottom: 8px;
+  font-size: clamp(30px, 4vw, 48px);
+}
+
+.cashier-panel p,
+.cashier-panel small {
+  color: #a7acb9;
+}
+
+.cashier-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  align-items: flex-start;
+}
+
+.cashier-actions,
+.cashier-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.cashier-actions button,
+.cashier-tabs button,
+.cashier-link-button {
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 10px;
+  padding: 10px 13px;
+  background: transparent;
+  color: #eef0f5;
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.cashier-tabs button.active {
+  background: #f1f3f8;
+  color: #11131a;
+}
+
+.cashier-link-button {
+  justify-self: start;
+}
+
+.cashier-auth-form,
+.cashier-form-card form {
+  display: grid;
+  gap: 14px;
+}
+
+.cashier-auth-form label,
+.cashier-form-card label {
+  display: grid;
+  gap: 7px;
+  color: #c9ccd5;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.cashier-auth-form input,
+.cashier-form-card input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 13px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 10px;
+  background: #0b0e15;
+  color: #fff;
+  font: inherit;
+}
+
+.cashier-status-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 18px;
+  align-items: center;
+  margin: 24px 0;
+  padding: 13px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  color: #aeb2bf;
+  font-size: 13px;
+}
+
+.cashier-badge {
+  padding: 5px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+}
+
+.cashier-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+  gap: 16px;
+}
+
+.cashier-card {
+  display: grid;
+  gap: 14px;
+  padding: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 14px;
+  background: #0d1017;
+}
+
+.cashier-balance-card {
+  align-content: center;
+  min-height: 210px;
+}
+
+.cashier-balance-card strong {
+  font-size: clamp(32px, 5vw, 54px);
+}
+
+.cashier-notice,
+.cashier-error {
+  margin-top: 16px;
+  padding: 12px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 10px;
+  background: #151822;
+}
+
+.cashier-notice {
+  color: #d9ead7;
+}
+
+.cashier-error {
+  color: #f0c4c4;
+}
+
+.cashier-history {
+  margin-top: 28px;
+}
+
+.cashier-section-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: baseline;
+}
+
+.cashier-section-heading span {
+  color: #858b99;
+  font-size: 12px;
+}
+
+.cashier-table-wrap {
+  overflow-x: auto;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+}
+
+.cashier-table-wrap table {
+  width: 100%;
+  min-width: 760px;
+  border-collapse: collapse;
+}
+
+.cashier-table-wrap th,
+.cashier-table-wrap td {
+  padding: 11px 13px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  text-align: left;
+  font-size: 12px;
+}
+
+.cashier-table-wrap th {
+  background: #0a0d13;
+  color: #9095a2;
+  font-weight: 800;
+}
+
+.cashier-table-wrap td {
+  color: #d7dae2;
+}
+
+.cashier-state {
+  display: inline-flex;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  font-weight: 800;
+}
+
+@media (max-width: 800px) {
+  .cashier-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .cashier-header {
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 560px) {
+  .cashier-shell {
+    padding: 14px;
+  }
+
+  .cashier-panel {
+    padding: 20px;
+    border-radius: 14px;
+  }
+}

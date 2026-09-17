@@ -9,6 +9,7 @@ import { AuditLog, PostgresAuditEventStore } from './auditLog.js'
 import { OperationalMetrics } from './operationalMetrics.js'
 import { CasinoService } from './casinoService.js'
 import { SandboxPaymentService } from './sandboxPaymentService.js'
+import { SandboxPaymentQueue } from './sandboxPaymentQueue.js'
 import { PaymentReconciler } from './paymentReconciliation.js'
 import { createSandboxPaymentHttpServer } from './sandboxPaymentHttpServer.js'
 
@@ -95,6 +96,9 @@ export async function createDefaultService(config = SERVER_CONFIG) {
         auditLog,
       })
     : null
+  service.paymentQueue = config.databaseUrl && sessionStore.pool
+    ? new SandboxPaymentQueue({ pool: sessionStore.pool })
+    : null
   service.paymentReconciler = config.databaseUrl && sessionStore.pool
     ? new PaymentReconciler({ pool: sessionStore.pool })
     : null
@@ -111,6 +115,7 @@ export async function startServer(config = SERVER_CONFIG) {
     authService: service.authService,
     authRateLimiter: service.authRateLimiter,
     paymentService: service.paymentService,
+    paymentQueue: service.paymentQueue,
   })
 
   server.listen(config.port, config.host, () => {

@@ -4,6 +4,7 @@ import CasinoLobby from './components/CasinoLobby.jsx'
 import SlotMachine from './components/SlotMachine.jsx'
 import LoginModal from './components/LoginModal.jsx'
 import OperationsConsole from './components/OperationsConsole.jsx'
+import Cashier from './components/Cashier.jsx'
 import { openDemoSession, syncDemoPlayer } from './api/casinoApi.js'
 import { usePersistentState } from './hooks/usePersistentState.js'
 
@@ -12,6 +13,7 @@ const DEMO_GAME_ID = 'golden-vault'
 
 function routeFromHash() {
   if (window.location.hash === '#ops') return 'ops'
+  if (window.location.hash === '#cashier') return 'cashier'
   return window.location.hash === `#game/${DEMO_GAME_ID}` ? 'slot' : 'lobby'
 }
 
@@ -29,9 +31,10 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    if (routeFromHash() === 'ops') return undefined
+    if (['ops', 'cashier'].includes(view)) return undefined
 
     let active = true
+    setServerState('connecting')
 
     openDemoSession({ player })
       .then((session) => {
@@ -47,10 +50,11 @@ export default function App() {
     return () => {
       active = false
     }
-  }, [])
+  }, [view])
 
   function navigate(nextView) {
     if (nextView === 'ops') window.location.hash = 'ops'
+    else if (nextView === 'cashier') window.location.hash = 'cashier'
     else window.location.hash = nextView === 'slot' ? `game/${DEMO_GAME_ID}` : 'lobby'
     setView(nextView)
   }
@@ -72,11 +76,16 @@ export default function App() {
     return <OperationsConsole onExit={() => navigate('lobby')} />
   }
 
+  if (view === 'cashier') {
+    return <Cashier onExit={() => navigate('lobby')} onBalanceChange={setBalance} />
+  }
+
   return (
     <div className="app-shell">
       <Header
         balance={balance}
         onHome={() => navigate('lobby')}
+        onCashier={() => navigate('cashier')}
         onOpenLogin={() => setLoginOpen(true)}
         player={player}
       />

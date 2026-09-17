@@ -69,9 +69,11 @@ function writeAuthToken(token) {
   }
 }
 
-function createIdempotencyKey() {
-  if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID()
-  return `spin-${Date.now()}-${Math.random().toString(36).slice(2)}`
+export function createClientIdempotencyKey(prefix = 'request') {
+  const id = globalThis.crypto?.randomUUID
+    ? globalThis.crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(36).slice(2)}`
+  return `${prefix}:${id}`
 }
 
 async function request(path, {
@@ -248,7 +250,7 @@ async function performSpin({ gameId, bet, idempotencyKey }) {
 
 export async function spinDemo({ gameId, bet }) {
   if (!readSessionId()) await openDemoSession()
-  const idempotencyKey = createIdempotencyKey()
+  const idempotencyKey = createClientIdempotencyKey('spin')
 
   try {
     return await performSpin({ gameId, bet, idempotencyKey })
@@ -258,6 +260,30 @@ export async function spinDemo({ gameId, bet }) {
     await openDemoSession()
     return performSpin({ gameId, bet, idempotencyKey })
   }
+}
+
+export async function listSandboxPayments() {
+  const payload = await request('/sandbox/payments', { includeSession: false })
+  return payload.operations || []
+}
+
+export async function createSandboxPayment({ kind, amount, idempotencyKey = '' }) {
+  const path = kind === 'withdrawal'
+    ? '/sandbox/payments/withdrawals'
+    : kind === 'deposit'
+      ? '/sandbox/payments/deposits'
+      : null
+  if (!path) throw new Error('Sandbox payment kind must be deposit or withdrawal')
+
+  const payload = await request(path, {
+    method: 'POST',
+    includeSession: false,
+    body: {
+      amount,
+      idempotencyKey: idempotencyKey || createClientIdempotencyKey(`cashier-${kind}`),
+    },
+  })
+  return payload.operation
 }
 
 export function clearDemoSession() {

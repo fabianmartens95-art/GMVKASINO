@@ -1,4 +1,4 @@
-export default function Header({ balance, onHome, onOpenLogin, player }) {
+export default function Header({ balance, onHome, onCashier, onOpenLogin, player }) {
   return (
     <header className="topbar">
       <button className="brand" onClick={onHome} aria-label="Open casino lobby">
@@ -10,17 +10,18 @@ export default function Header({ balance, onHome, onOpenLogin, player }) {
 
       <nav className="desktop-nav" aria-label="Primary navigation">
         <button onClick={onHome}>Casino</button>
+        <button onClick={onCashier}>Cashier</button>
         <button disabled>Live</button>
         <button disabled>Rewards</button>
       </nav>
 
       <div className="account-actions">
-        <div className="wallet-chip" title="Demo credits only">
+        <button className="wallet-chip" title="Demo credits only" onClick={onCashier}>
           <span>Demo wallet</span>
           <strong>{balance.toLocaleString('en-US', { minimumFractionDigits: 2 })} CR</strong>
-        </div>
+        </button>
         <button className="secondary-button" onClick={onOpenLogin}>
-          {player ? player : 'Log in'}
+          {player ? player : 'Demo name'}
         </button>
       </div>
     </header>

@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   getOperationsOverview,
+  getSandboxPaymentQueue,
   loginOperations,
   logoutOperations,
+  transitionSandboxPayment,
 } from '../api/operationsApi.js'
 import '../operations.css'
 
@@ -30,15 +32,48 @@ function paymentStatusRows(payments) {
     .sort(([a], [b]) => a.localeCompare(b))
 }
 
+function paymentActions(operation) {
+  if (operation.kind === 'deposit' && operation.status === 'pending') return ['complete', 'fail']
+  if (operation.kind === 'withdrawal' && operation.status === 'reserved') return ['approve', 'reject', 'fail']
+  if (operation.kind === 'withdrawal' && operation.status === 'approved') return ['complete', 'fail']
+  return []
+}
+
+function formatDate(value) {
+  const number = Number(value)
+  return Number.isFinite(number) ? new Date(number).toLocaleString() : '—'
+}
+
 export default function OperationsConsole({ onExit }) {
   const [overview, setOverview] = useState(null)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [state, setState] = useState('checking')
   const [error, setError] = useState('')
+  const [queue, setQueue] = useState([])
+  const [queueAccess, setQueueAccess] = useState('checking')
+  const [queueError, setQueueError] = useState('')
+  const [transitioningId, setTransitioningId] = useState('')
 
   const requestTotals = useMemo(() => aggregateRequests(overview?.metrics), [overview])
   const payments = overview?.payments || null
+
+  async function refreshFinanceQueue() {
+    setQueueError('')
+    try {
+      const operations = await getSandboxPaymentQueue()
+      setQueue(operations)
+      setQueueAccess('allowed')
+    } catch (requestError) {
+      setQueue([])
+      if (requestError.status === 403) setQueueAccess('denied')
+      else if (requestError.status === 401) throw requestError
+      else {
+        setQueueAccess('error')
+        setQueueError(requestError.message || 'Finance queue could not be loaded.')
+      }
+    }
+  }
 
   async function refresh() {
     setError('')
@@ -46,8 +81,10 @@ export default function OperationsConsole({ onExit }) {
       const next = await getOperationsOverview()
       setOverview(next)
       setState('ready')
+      await refreshFinanceQueue()
     } catch (requestError) {
       setOverview(null)
+      setQueue([])
       if (requestError.status === 401) setState('login')
       else if (requestError.status === 403) {
         setState('forbidden')
@@ -72,6 +109,7 @@ export default function OperationsConsole({ onExit }) {
       setOverview(result.overview)
       setPassword('')
       setState('ready')
+      await refreshFinanceQueue()
     } catch (loginError) {
       setPassword('')
       if (loginError.status === 403) {
@@ -84,12 +122,31 @@ export default function OperationsConsole({ onExit }) {
     }
   }
 
+  async function handleTransition(operation, action) {
+    setQueueError('')
+    setTransitioningId(operation.id)
+    try {
+      await transitionSandboxPayment(operation.id, action)
+      await Promise.all([
+        getOperationsOverview().then(setOverview),
+        refreshFinanceQueue(),
+      ])
+    } catch (transitionError) {
+      setQueueError(transitionError.message || 'Sandbox transition failed.')
+    } finally {
+      setTransitioningId('')
+    }
+  }
+
   async function handleLogout() {
     await logoutOperations().catch(() => {})
     setOverview(null)
+    setQueue([])
+    setQueueAccess('checking')
     setPassword('')
     setState('login')
     setError('')
+    setQueueError('')
   }
 
   if (state === 'checking') {
@@ -98,7 +155,7 @@ export default function OperationsConsole({ onExit }) {
         <section className="ops-panel ops-centered">
           <span className="ops-kicker">GMVKASINO OPERATIONS</span>
           <h1>Zugriff wird geprüft</h1>
-          <p>Read-only · Demo-System</p>
+          <p>Demo-System · Capability protected</p>
         </section>
       </main>
     )
@@ -109,9 +166,9 @@ export default function OperationsConsole({ onExit }) {
       <main className="ops-shell">
         <section className="ops-panel ops-login-panel">
           <div>
-            <span className="ops-kicker">STAFF ONLY · READ ONLY</span>
+            <span className="ops-kicker">STAFF ONLY</span>
             <h1>Operations Console</h1>
-            <p>Der erste interne Betriebsbereich. Echtgeldfunktionen und administrative Mutationen sind hier nicht verfügbar.</p>
+            <p>Interner Betriebsbereich. Echtgeldfunktionen sind nicht verfügbar; Finance/Admin kann ausschließlich DEMO-Sandbox-Zustände simulieren.</p>
           </div>
 
           {state === 'forbidden' ? (
@@ -161,9 +218,9 @@ export default function OperationsConsole({ onExit }) {
       <section className="ops-panel">
         <header className="ops-header">
           <div>
-            <span className="ops-kicker">STAFF OPERATIONS · READ ONLY</span>
+            <span className="ops-kicker">STAFF OPERATIONS · DEMO ONLY</span>
             <h1>Systemübersicht</h1>
-            <p>Keine Balance-, Rollen-, KYC-, Payment- oder Player-Mutationen verfügbar.</p>
+            <p>Keine Echtgeld-, Rollen-, KYC- oder Player-Balance-Mutationen. Finance-Aktionen unten wirken ausschließlich auf den DEMO-Sandbox-Payment-State.</p>
           </div>
           <div className="ops-actions">
             <button type="button" onClick={refresh}>Aktualisieren</button>
@@ -176,8 +233,9 @@ export default function OperationsConsole({ onExit }) {
           <span className="ops-badge">DEMO ONLY</span>
           <span>Revision {shortRevision(overview?.revision)}</span>
           <span>Persistence {overview?.persistence || 'unknown'}</span>
-          <span>{overview?.readOnly ? 'Read-only enforced' : 'Unknown mode'}</span>
+          <span>{overview?.readOnly ? 'Overview read-only' : 'Unknown mode'}</span>
           {payments && <span>Payments {payments.ok ? 'reconciled' : 'anomaly detected'}</span>}
+          <span>Finance queue {queueAccess === 'allowed' ? 'enabled' : queueAccess === 'denied' ? 'not permitted' : queueAccess}</span>
         </div>
 
         <div className="ops-grid">
@@ -212,6 +270,58 @@ export default function OperationsConsole({ onExit }) {
             <small>{Number(payments?.mismatchCount || 0)} mismatches · read-only check</small>
           </article>
         </div>
+
+        {queueAccess === 'allowed' && (
+          <section className="ops-table-section">
+            <div className="ops-section-heading">
+              <h2>Finance Sandbox Queue</h2>
+              <span>{queue.length} operations · capability protected</span>
+            </div>
+            {queueError && <div className="ops-error">{queueError}</div>}
+            <div className="ops-table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Account ref</th>
+                    <th>Type</th>
+                    <th>Amount</th>
+                    <th>Status</th>
+                    <th>Created</th>
+                    <th>Sandbox actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {queue.length === 0 ? (
+                    <tr><td colSpan="6">No sandbox payment operations.</td></tr>
+                  ) : queue.map((operation) => (
+                    <tr key={operation.id}>
+                      <td>{operation.accountRef}</td>
+                      <td>{operation.kind}</td>
+                      <td>{operation.amountExact} DEMO</td>
+                      <td>{operation.status}</td>
+                      <td>{formatDate(operation.createdAt)}</td>
+                      <td>
+                        <div className="ops-inline-actions">
+                          {paymentActions(operation).map((action) => (
+                            <button
+                              key={action}
+                              type="button"
+                              disabled={transitioningId === operation.id}
+                              onClick={() => handleTransition(operation, action)}
+                            >
+                              {transitioningId === operation.id ? 'Working…' : action}
+                            </button>
+                          ))}
+                          {paymentActions(operation).length === 0 && <span>terminal</span>}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )}
 
         {payments && (
           <section className="ops-table-section">
