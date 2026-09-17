@@ -6,6 +6,7 @@ import { PostgresSessionStore } from '../server/postgresSessionStore.js'
 import { SlidingWindowRateLimiter } from '../server/rateLimiter.js'
 import { AuditLog } from '../server/auditLog.js'
 import { CasinoService } from '../server/casinoService.js'
+import { spin as resolveSlot } from '../src/game/slotEngine.js'
 
 const { Pool } = pg
 const databaseUrl = process.env.TEST_DATABASE_URL || ''
@@ -150,5 +151,77 @@ integrationTest('PostgreSQL concurrent duplicate round settles the ledger once a
     )
   } finally {
     await pool.end()
+  }
+})
+
+integrationTest('PostgreSQL concurrent service retries execute RNG exactly once before replay', async () => {
+  const pool = new Pool({ connectionString: databaseUrl })
+  const store = new PostgresSessionStore({ pool, startingBalance: 1000 })
+  let expectedRngCalls = 0
+  resolveSlot(1, () => {
+    expectedRngCalls += 1
+    return 0
+  })
+  let rngCalls = 0
+
+  const service = new CasinoService({
+    sessionStore: store,
+    rateLimiter: new SlidingWindowRateLimiter({ limit: 10, windowMs: 10_000 }),
+    auditLog: new AuditLog({ sink: () => {} }),
+    rng: () => {
+      rngCalls += 1
+      return 0
+    },
+  })
+
+  try {
+    await store.init()
+    const firstSession = await store.create({ player: 'Serialized RNG QA' })
+    const secondSession = await store.createForAccount(firstSession.accountId)
+    const idempotencyKey = `serialized-rng-${firstSession.accountId}`
+
+    const [first, second] = await Promise.all([
+      service.spin({
+        sessionId: firstSession.id,
+        gameId: 'golden-vault',
+        bet: 1,
+        accountId: firstSession.accountId,
+        idempotencyKey,
+        requestId: 'serialized-rng-request-a',
+      }),
+      service.spin({
+        sessionId: secondSession.id,
+        gameId: 'golden-vault',
+        bet: 1,
+        accountId: firstSession.accountId,
+        idempotencyKey,
+        requestId: 'serialized-rng-request-b',
+      }),
+    ])
+
+    assert.deepEqual(second, first)
+    assert.equal(rngCalls, expectedRngCalls)
+
+    const rounds = await pool.query(
+      `SELECT COUNT(*)::int AS count
+       FROM game_rounds
+       WHERE account_id = $1 AND idempotency_key = $2`,
+      [firstSession.accountId, idempotencyKey],
+    )
+    assert.equal(rounds.rows[0].count, 1)
+
+    const settlements = await pool.query(
+      `SELECT COUNT(*)::int AS count
+       FROM ledger_transactions
+       WHERE type = 'GAME_SETTLEMENT'
+         AND reference_id = $1`,
+      [first.spinId],
+    )
+    assert.equal(settlements.rows[0].count, 1)
+
+    const wallet = await store.ledger.getWallet(pool, firstSession.accountId)
+    assert.equal(wallet.balance, first.balance)
+  } finally {
+    await service.close()
   }
 })
