@@ -403,11 +403,16 @@ export function createHttpServer({
       if (apiPath === '/spin' && req.method === 'POST') {
         const account = await optionalAuthAccount(req, authService)
         const body = await readJson(req, config.maxBodyBytes)
+        if (typeof body.idempotencyKey !== 'string' || !body.idempotencyKey.trim()) {
+          throw new CasinoError(400, 'IDEMPOTENCY_KEY_REQUIRED', 'Spin requests require an idempotency key')
+        }
         const result = await service.spin({
           sessionId: sessionIdFrom(req),
           gameId: body.gameId,
           bet: body.bet,
           accountId: account?.id || null,
+          idempotencyKey: body.idempotencyKey,
+          requestId,
         })
         sendJson(res, 200, { result, requestId })
         return
