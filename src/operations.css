@@ -1,0 +1,251 @@
+.ops-shell {
+  min-height: 100vh;
+  padding: 32px;
+  background: #080a0f;
+  color: #f6f7fb;
+}
+
+.ops-panel {
+  width: min(1180px, 100%);
+  margin: 0 auto;
+  padding: 28px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 20px;
+  background: rgba(17, 20, 29, 0.96);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.34);
+}
+
+.ops-centered {
+  min-height: 320px;
+  display: grid;
+  place-content: center;
+  text-align: center;
+}
+
+.ops-login-panel {
+  max-width: 620px;
+  display: grid;
+  gap: 24px;
+}
+
+.ops-kicker {
+  display: inline-block;
+  margin-bottom: 8px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  color: #c7cad6;
+}
+
+.ops-panel h1,
+.ops-panel h2,
+.ops-panel p {
+  margin-top: 0;
+}
+
+.ops-panel h1 {
+  margin-bottom: 8px;
+  font-size: clamp(28px, 4vw, 48px);
+}
+
+.ops-panel p {
+  color: #a8adbb;
+}
+
+.ops-login-form {
+  display: grid;
+  gap: 16px;
+}
+
+.ops-login-form label {
+  display: grid;
+  gap: 7px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #c9ccd5;
+}
+
+.ops-login-form input {
+  width: 100%;
+  padding: 13px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 10px;
+  background: #0b0e15;
+  color: #fff;
+  font: inherit;
+}
+
+.ops-login-form button,
+.ops-actions button,
+.ops-alert button,
+.ops-link-button {
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 10px;
+  padding: 11px 14px;
+  background: #f1f3f8;
+  color: #11131a;
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.ops-link-button {
+  justify-self: start;
+  background: transparent;
+  color: #d4d7e0;
+}
+
+.ops-error,
+.ops-alert {
+  padding: 12px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 10px;
+  background: #151822;
+  color: #f0c4c4;
+}
+
+.ops-alert {
+  display: grid;
+  gap: 10px;
+}
+
+.ops-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  align-items: flex-start;
+}
+
+.ops-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.ops-actions button:nth-child(n + 2) {
+  background: transparent;
+  color: #eef0f5;
+}
+
+.ops-status-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 18px;
+  align-items: center;
+  margin: 24px 0;
+  padding: 13px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  color: #aeb2bf;
+  font-size: 13px;
+}
+
+.ops-badge {
+  padding: 5px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+}
+
+.ops-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.ops-card {
+  display: grid;
+  gap: 8px;
+  min-height: 138px;
+  padding: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 14px;
+  background: #0d1017;
+}
+
+.ops-card span,
+.ops-card small {
+  color: #9297a5;
+}
+
+.ops-card strong {
+  font-size: 25px;
+}
+
+.ops-table-section {
+  margin-top: 28px;
+}
+
+.ops-section-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: baseline;
+}
+
+.ops-section-heading span {
+  color: #858b99;
+  font-size: 12px;
+}
+
+.ops-table-wrap {
+  overflow-x: auto;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+}
+
+.ops-table-wrap table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 760px;
+}
+
+.ops-table-wrap th,
+.ops-table-wrap td {
+  padding: 11px 13px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  text-align: left;
+  font-size: 12px;
+}
+
+.ops-table-wrap th {
+  color: #9095a2;
+  background: #0a0d13;
+  font-weight: 800;
+}
+
+.ops-table-wrap td {
+  color: #d7dae2;
+}
+
+@media (max-width: 900px) {
+  .ops-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .ops-header {
+    flex-direction: column;
+  }
+
+  .ops-actions {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 560px) {
+  .ops-shell {
+    padding: 14px;
+  }
+
+  .ops-panel {
+    padding: 20px;
+    border-radius: 14px;
+  }
+
+  .ops-grid {
+    grid-template-columns: 1fr;
+  }
+}
