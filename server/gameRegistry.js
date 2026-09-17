@@ -1,4 +1,5 @@
 import { goldenVaultGameAdapter } from './gameAdapters/goldenVault.js'
+import { decimalToAtomic } from './amounts.js'
 
 export class GameAdapterContractError extends Error {
   constructor(message, details = undefined) {
@@ -38,13 +39,19 @@ export function normalizeGameResult(rawResult) {
     throw new GameAdapterContractError('Game result totalWin must be a finite non-negative number')
   }
 
+  try {
+    decimalToAtomic(rawResult.totalWin, 2)
+  } catch {
+    throw new GameAdapterContractError('Game result totalWin exceeds DEMO asset precision')
+  }
+
   const normalized = {}
   for (const [key, value] of Object.entries(rawResult)) {
     if (RESERVED_RESULT_FIELDS.has(key)) continue
     normalized[key] = value
   }
 
-  normalized.totalWin = Number(rawResult.totalWin.toFixed(2))
+  normalized.totalWin = rawResult.totalWin
 
   try {
     JSON.stringify(normalized)
