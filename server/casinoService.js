@@ -7,6 +7,35 @@ function sessionRef(sessionId) {
   return createHash('sha256').update(sessionId).digest('hex').slice(0, 16)
 }
 
+function idempotencyRef(idempotencyKey) {
+  if (!idempotencyKey) return null
+  return createHash('sha256').update(idempotencyKey).digest('hex').slice(0, 16)
+}
+
+function normalizeIdempotencyKey(value) {
+  if (value === undefined || value === null || value === '') {
+    return `internal:${randomUUID()}`
+  }
+  if (typeof value !== 'string') {
+    throw new CasinoError(400, 'INVALID_IDEMPOTENCY_KEY', 'Idempotency key must be a string')
+  }
+  const key = value.trim()
+  if (!/^[A-Za-z0-9._:-]{8,128}$/.test(key)) {
+    throw new CasinoError(
+      400,
+      'INVALID_IDEMPOTENCY_KEY',
+      'Idempotency key must be 8-128 characters using letters, numbers, dot, underscore, colon, or hyphen',
+    )
+  }
+  return key
+}
+
+function spinFingerprint({ ownerId, gameId, bet }) {
+  return createHash('sha256')
+    .update(JSON.stringify({ ownerId, gameId, bet, asset: 'DEMO' }))
+    .digest('hex')
+}
+
 export class CasinoError extends Error {
   constructor(status, code, message, details = undefined) {
     super(message)
@@ -131,7 +160,14 @@ export class CasinoService {
     return true
   }
 
-  async spin({ sessionId, gameId, bet, accountId = null }) {
+  async spin({
+    sessionId,
+    gameId,
+    bet,
+    accountId = null,
+    idempotencyKey = null,
+    requestId = null,
+  }) {
     let session
     try {
       session = await this.getSession(sessionId, { accountId })
@@ -156,6 +192,39 @@ export class CasinoService {
       })
     }
 
+    const normalizedIdempotencyKey = normalizeIdempotencyKey(idempotencyKey)
+    const ownerId = session.accountId || session.id
+    const requestFingerprint = spinFingerprint({ ownerId, gameId, bet })
+
+    if (typeof this.sessionStore.getSpinReplay === 'function') {
+      const replay = await this.sessionStore.getSpinReplay({
+        ownerId,
+        idempotencyKey: normalizedIdempotencyKey,
+        requestFingerprint,
+      })
+      if (replay?.conflict) {
+        this.metrics?.incrementEvent?.('spin.idempotency_conflict')
+        throw new CasinoError(
+          409,
+          'IDEMPOTENCY_CONFLICT',
+          'Idempotency key was already used for a different spin request',
+          { roundId: replay.roundId },
+        )
+      }
+      if (replay?.response) {
+        this.metrics?.incrementEvent?.('spin.replayed')
+        this.auditLog.record('spin.replayed', {
+          requestId,
+          roundId: replay.roundId,
+          sessionRef: sessionRef(session.id),
+          accountId: session.accountId || null,
+          gameId,
+          idempotencyRef: idempotencyRef(normalizedIdempotencyKey),
+        })
+        return replay.response
+      }
+    }
+
     if (session.balance < bet) {
       this.metrics?.incrementEvent?.('spin.insufficient_credits')
       throw new CasinoError(409, 'INSUFFICIENT_DEMO_CREDITS', 'Not enough demo credits')
@@ -171,41 +240,77 @@ export class CasinoService {
 
     const result = spin(bet, this.rng)
     const spinId = randomUUID()
+    const roundResponse = {
+      spinId,
+      gameId,
+      bet,
+      ...result,
+    }
+
     const updatedSession = await this.sessionStore.applySpin(session.id, {
       bet,
       payout: result.totalWin,
       spinId,
       gameId,
       accountId,
+      ownerId,
+      idempotencyKey: normalizedIdempotencyKey,
+      requestFingerprint,
+      roundResponse,
+      requestId,
     })
+
+    if (updatedSession?.idempotencyConflict) {
+      this.metrics?.incrementEvent?.('spin.idempotency_conflict')
+      throw new CasinoError(
+        409,
+        'IDEMPOTENCY_CONFLICT',
+        'Idempotency key was already used for a different spin request',
+        { roundId: updatedSession.roundId },
+      )
+    }
+
+    if (updatedSession?.replayed && updatedSession.roundResponse) {
+      this.metrics?.incrementEvent?.('spin.replayed')
+      this.auditLog.record('spin.replayed', {
+        requestId,
+        roundId: updatedSession.roundId,
+        sessionRef: sessionRef(session.id),
+        accountId: session.accountId || null,
+        gameId,
+        idempotencyRef: idempotencyRef(normalizedIdempotencyKey),
+      })
+      return updatedSession.roundResponse
+    }
 
     if (!updatedSession) {
       this.metrics?.incrementEvent?.('spin.insufficient_credits')
       throw new CasinoError(409, 'INSUFFICIENT_DEMO_CREDITS', 'Demo balance changed before settlement or session is not authorized')
     }
 
-    this.metrics?.incrementEvent?.('spin.resolved')
-    this.metrics?.incrementEvent?.(result.totalWin > 0 ? 'spin.win' : 'spin.no_win')
-
-    this.auditLog.record('spin.resolved', {
-      spinId,
-      sessionRef: sessionRef(session.id),
-      accountId: updatedSession.accountId || null,
-      gameId,
-      bet,
-      payout: result.totalWin,
-      balance: updatedSession.balance,
-      winLines: result.wins.map((win) => win.line),
-    })
-
-    return {
-      spinId,
-      gameId,
-      bet,
-      ...result,
+    const response = updatedSession.roundResponse || {
+      ...roundResponse,
       balance: updatedSession.balance,
       spins: updatedSession.spins,
     }
+
+    this.metrics?.incrementEvent?.('spin.resolved')
+    this.metrics?.incrementEvent?.(response.totalWin > 0 ? 'spin.win' : 'spin.no_win')
+
+    this.auditLog.record('spin.resolved', {
+      requestId,
+      spinId: response.spinId,
+      sessionRef: sessionRef(session.id),
+      accountId: updatedSession.accountId || session.accountId || null,
+      gameId,
+      bet,
+      payout: response.totalWin,
+      balance: response.balance,
+      winLines: response.wins.map((win) => win.line),
+      idempotencyRef: idempotencyRef(normalizedIdempotencyKey),
+    })
+
+    return response
   }
 
   async ready() {
