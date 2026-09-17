@@ -1,4 +1,4 @@
-import { loginAccount, logoutAccount } from './casinoApi.js'
+import { createClientIdempotencyKey, loginAccount, logoutAccount } from './casinoApi.js'
 
 const API_BASE = '/api/v1'
 const AUTH_KEY = 'gmvkasino.auth.token'
@@ -12,12 +12,17 @@ function authToken() {
   }
 }
 
-async function requestOverview() {
+async function requestStaff(path, { method = 'GET', body } = {}) {
   const token = authToken()
   const headers = { Accept: 'application/json' }
   if (token) headers.Authorization = `Bearer ${token}`
+  if (body !== undefined) headers['Content-Type'] = 'application/json'
 
-  const response = await fetch(`${API_BASE}/ops/overview`, { headers })
+  const response = await fetch(`${API_BASE}${path}`, {
+    method,
+    headers,
+    ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+  })
   const payload = await response.json().catch(() => ({}))
   if (!response.ok) {
     const error = new Error(payload.error?.message || 'Operations request failed')
@@ -27,11 +32,32 @@ async function requestOverview() {
     error.requestId = payload.error?.requestId || response.headers.get('x-request-id') || ''
     throw error
   }
+  return payload
+}
+
+async function requestOverview() {
+  const payload = await requestStaff('/ops/overview')
   return payload.overview
 }
 
 export async function getOperationsOverview() {
   return requestOverview()
+}
+
+export async function getSandboxPaymentQueue() {
+  const payload = await requestStaff('/sandbox/payments/queue')
+  return payload.operations || []
+}
+
+export async function transitionSandboxPayment(operationId, action) {
+  const payload = await requestStaff(`/sandbox/payments/${encodeURIComponent(operationId)}/transition`, {
+    method: 'POST',
+    body: {
+      action,
+      eventId: createClientIdempotencyKey(`finance-${action}`),
+    },
+  })
+  return payload.operation
 }
 
 export async function loginOperations({ email, password }) {
