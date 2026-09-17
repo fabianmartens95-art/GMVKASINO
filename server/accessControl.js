@@ -14,18 +14,21 @@ const ROLE_CAPABILITIES = Object.freeze({
     'wallet.read',
   ]),
   support: Object.freeze([
+    'operations.read',
     'player.read',
     'profile.read',
     'session.read',
   ]),
   compliance: Object.freeze([
     'audit.read',
+    'operations.read',
     'player.read',
     'risk.review',
     'session.read',
   ]),
   finance: Object.freeze([
     'ledger.read',
+    'operations.read',
     'reconciliation.read',
   ]),
   admin: Object.freeze(['*']),
