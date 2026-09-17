@@ -5,63 +5,195 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#09080d">
   <meta name="description" content="GMVKASINO playable browser demo">
-  <title>GMVKASINO — Browser Demo</title>
+  <title>GMVKASINO — Casino Demo</title>
   <link rel="stylesheet" href="/play.css">
   <script src="/play.js" defer></script>
 </head>
 <body>
-  <main class="showcase-shell">
-    <header class="showcase-header">
-      <div class="brand"><span class="brand-mark">G</span><span><strong>GMV</strong>KASINO</span></div>
-      <span class="demo-pill">DEMO ONLY</span>
+  <div class="app">
+    <header class="topbar">
+      <button class="brand js-nav" data-view="lobby" type="button" aria-label="Casino Lobby">
+        <span class="brand-mark">G</span>
+        <span class="brand-word"><strong>GMV</strong>KASINO</span>
+      </button>
+      <span class="demo-pill">DEMO</span>
+      <div class="top-actions">
+        <button id="walletButton" class="wallet-chip js-nav" data-view="cashier" type="button">
+          <span>Wallet</span><strong id="topBalance">1.000,00 CR</strong>
+        </button>
+        <button id="accountButton" class="avatar-button js-nav" data-view="account" type="button" aria-label="Account">G</button>
+      </div>
     </header>
 
-    <section class="intro">
-      <span class="eyebrow">BROWSER SHOWCASE</span>
-      <h1>Golden Vault</h1>
-      <p>Spielbare Slot-Demo mit serverseitig verwaltetem DEMO-Guthaben. Kein Echtgeld.</p>
-    </section>
+    <main class="content">
+      <section id="view-lobby" class="view is-active">
+        <div class="notice-strip"><span>● LIVE DEMO</span><strong>Direkt im Browser spielbar</strong><small>Kein Echtgeld · keine echten Zahlungen</small></div>
 
-    <section class="machine" aria-label="Golden Vault demo slot">
-      <div class="machine-crown">GOLDEN VAULT</div>
-      <div id="reels" class="reels" aria-live="polite">
-        <div class="symbol">7</div><div class="symbol">◆</div><div class="symbol">BAR</div>
-        <div class="symbol">🍒</div><div class="symbol">🔔</div><div class="symbol">🍋</div>
-        <div class="symbol">BAR</div><div class="symbol">7</div><div class="symbol">◆</div>
-      </div>
-
-      <div class="status-row">
-        <div><span>WIN</span><strong id="lastWin">0.00</strong></div>
-        <div class="message" id="message">Demo wird verbunden…</div>
-        <div class="align-right"><span>CREDIT</span><strong id="balance">1000.00</strong></div>
-      </div>
-
-      <div class="controls">
-        <div class="bet-box">
-          <span>BET</span>
-          <div class="bet-controls">
-            <button id="betDown" type="button" aria-label="Einsatz senken">−</button>
-            <strong id="bet">5.00</strong>
-            <button id="betUp" type="button" aria-label="Einsatz erhöhen">+</button>
+        <section class="hero">
+          <div class="hero-copy">
+            <span class="eyebrow">GMVKASINO ORIGINAL</span>
+            <h1>Golden<br><em>Vault</em></h1>
+            <p>Klassischer 3×3 Slot, serverseitige Spins und ein persistentes DEMO-Wallet.</p>
+            <div class="hero-actions">
+              <button id="heroPlay" class="primary" type="button">JETZT SPIELEN</button>
+              <span><b>1.000 CR</b> Startguthaben</span>
+            </div>
           </div>
+          <button id="heroMachine" class="hero-machine" type="button" aria-label="Golden Vault spielen">
+            <div class="jackpot-label">GOLDEN VAULT</div>
+            <div class="mini-reels"><span>7</span><span>◆</span><span>BAR</span></div>
+            <div class="machine-base"><span>5 LINES</span><b>SPIN</b><span>DEMO</span></div>
+          </button>
+        </section>
+
+        <nav class="category-row" aria-label="Spielkategorien">
+          <button class="category is-active" type="button">Beliebt</button>
+          <button class="category" type="button">Slots</button>
+          <button class="category" type="button" disabled>Live Casino</button>
+          <button class="category" type="button" disabled>Jackpots</button>
+        </nav>
+
+        <section class="games-block">
+          <div class="section-title"><div><span class="eyebrow">CASINO LOBBY</span><h2>Spiele</h2></div><span>4 Games</span></div>
+          <div class="games-grid">
+            <button class="game-card game-gold" id="gameGoldenVault" type="button">
+              <div class="game-art"><span class="status playable">SPIELBAR</span><div class="art-seven">7</div><div class="shine"></div></div>
+              <div class="game-copy"><div><strong>Golden Vault</strong><span>GMVKASINO Originals</span></div><i>▶</i></div>
+            </button>
+            <article class="game-card game-neon">
+              <div class="game-art"><span class="status">COMING SOON</span><div class="art-icon">🍓</div></div>
+              <div class="game-copy"><div><strong>Neon Fruits</strong><span>GMVKASINO Originals</span></div><i>•</i></div>
+            </article>
+            <article class="game-card game-diamond">
+              <div class="game-art"><span class="status">COMING SOON</span><div class="art-icon">◆</div></div>
+              <div class="game-copy"><div><strong>Diamond Rush</strong><span>GMVKASINO Originals</span></div><i>•</i></div>
+            </article>
+            <article class="game-card game-seven">
+              <div class="game-art"><span class="status">COMING SOON</span><div class="art-seven small">777</div></div>
+              <div class="game-copy"><div><strong>Lucky 777</strong><span>GMVKASINO Originals</span></div><i>•</i></div>
+            </article>
+          </div>
+        </section>
+
+        <section class="product-cards">
+          <article><span class="eyebrow">ACCOUNT</span><h3>Dein Demo-Wallet</h3><p>Registrieren, einloggen und DEMO-Guthaben über Sessions hinweg verwalten.</p><button class="text-action js-nav" data-view="account" type="button">Account öffnen →</button></article>
+          <article><span class="eyebrow">CASHIER</span><h3>Payment Sandbox</h3><p>Deposit- und Withdrawal-States ohne echten Zahlungsanbieter demonstrieren.</p><button class="text-action js-nav" data-view="cashier" type="button">Kasse öffnen →</button></article>
+        </section>
+      </section>
+
+      <section id="view-game" class="view">
+        <div class="game-header">
+          <button class="back js-nav" data-view="lobby" type="button">← Lobby</button>
+          <div><span class="eyebrow">GMVKASINO ORIGINAL</span><h2>Golden Vault</h2></div>
+          <span class="server-badge" id="serverBadge">VERBINDET</span>
         </div>
 
-        <button id="spin" class="spin" type="button" disabled>
-          <span>SPIN</span>
-          <small id="spinBet">5.00 CR</small>
-        </button>
+        <section class="machine">
+          <div class="machine-crown"><small>THE ORIGINAL</small><strong>GOLDEN VAULT</strong></div>
+          <div id="reels" class="reels" aria-live="polite">
+            <div class="symbol">7</div><div class="symbol gold">◆</div><div class="symbol bar">BAR</div>
+            <div class="symbol">🍒</div><div class="symbol gold">🔔</div><div class="symbol">🍋</div>
+            <div class="symbol bar">BAR</div><div class="symbol">7</div><div class="symbol gold">◆</div>
+          </div>
+          <div class="status-row">
+            <div><span>WIN</span><strong id="lastWin">0.00</strong></div>
+            <div class="message" id="message">Demo wird verbunden…</div>
+            <div class="align-right"><span>CREDIT</span><strong id="balance">1000.00</strong></div>
+          </div>
+          <div class="controls">
+            <div class="bet-box"><span>BET</span><div class="bet-controls"><button id="betDown" type="button">−</button><strong id="bet">5.00</strong><button id="betUp" type="button">+</button></div></div>
+            <button id="spin" class="spin" type="button" disabled><span>SPIN</span><small id="spinBet">5.00 CR</small></button>
+            <div class="lines-box"><span>LINES</span><strong>5</strong><small>fixed</small></div>
+          </div>
+        </section>
+        <section class="game-stats">
+          <article><span>MODE</span><strong>DEMO</strong></article>
+          <article><span>ENGINE</span><strong>SERVER</strong></article>
+          <article><span>SESSION</span><strong id="sessionState">ACTIVE</strong></article>
+        </section>
+      </section>
 
-        <div class="lines-box"><span>LINES</span><strong>5</strong><small>fixed</small></div>
-      </div>
-    </section>
+      <section id="view-cashier" class="view">
+        <div class="page-heading"><div><span class="eyebrow">DEMO WALLET</span><h1>Kasse</h1><p>Sandbox-Transaktionen ohne echten Geldwert.</p></div><span class="demo-pill">NO REAL MONEY</span></div>
 
-    <section class="info-grid">
-      <article><strong>Server-authoritativ</strong><span>Gewinn und Guthaben kommen vom Backend.</span></article>
-      <article><strong>DEMO Credits</strong><span>Kein monetärer Wert, keine Ein- oder Auszahlung.</span></article>
-      <article><strong>Direkt im Browser</strong><span>Keine Installation erforderlich.</span></article>
-    </section>
+        <div id="cashierGuest" class="auth-callout">
+          <span class="icon-circle">◎</span>
+          <h2>Demo-Account erforderlich</h2>
+          <p>Für Payment-Simulationen brauchst du einen Account. Spielen funktioniert auch als Gast.</p>
+          <button class="primary js-nav" data-view="account" type="button">ACCOUNT ÖFFNEN</button>
+        </div>
 
-    <footer>GMVKASINO SHOWCASE · DEMO ONLY · 18+ CONCEPT</footer>
-  </main>
+        <div id="cashierAuthed" class="hidden">
+          <section class="wallet-overview">
+            <article class="balance-card"><span>VERFÜGBAR</span><strong id="cashierBalance">0.00 CR</strong><small>Server-/Ledger-Balance</small></article>
+            <article class="wallet-meta"><span>ACCOUNT</span><strong id="cashierEmail">—</strong><small>DEMO only</small></article>
+          </section>
+
+          <section class="cashier-actions-grid">
+            <form id="depositForm" class="cashier-card">
+              <span class="cashier-icon">＋</span><h3>Einzahlung simulieren</h3>
+              <p>Erstellt einen Pending-Deposit in der Sandbox. Kein Geld wird bewegt.</p>
+              <label>Betrag in CR<input id="depositAmount" type="number" min="0.01" max="1000000" step="0.01" value="100.00" required></label>
+              <button class="primary" type="submit">DEPOSIT INTENT</button>
+            </form>
+            <form id="withdrawForm" class="cashier-card">
+              <span class="cashier-icon">−</span><h3>Auszahlung simulieren</h3>
+              <p>Reserviert DEMO-Credits serverseitig für eine Sandbox-Auszahlung.</p>
+              <label>Betrag in CR<input id="withdrawAmount" type="number" min="0.01" max="1000000" step="0.01" value="50.00" required></label>
+              <button class="secondary-action" type="submit">WITHDRAWAL RESERVIEREN</button>
+            </form>
+          </section>
+
+          <section class="history-card">
+            <div class="section-title compact"><div><span class="eyebrow">SANDBOX</span><h2>Transaktionen</h2></div><button id="refreshPayments" class="ghost" type="button">Aktualisieren</button></div>
+            <div id="paymentHistory" class="payment-list"><p class="empty">Noch keine Sandbox-Transaktionen.</p></div>
+          </section>
+        </div>
+      </section>
+
+      <section id="view-account" class="view">
+        <div class="page-heading"><div><span class="eyebrow">PLAYER ACCOUNT</span><h1>Account</h1><p>Login für persistentes DEMO-Wallet und Cashier.</p></div><span class="demo-pill">DEMO</span></div>
+
+        <div id="accountGuest" class="account-grid">
+          <form id="loginForm" class="account-card">
+            <span class="eyebrow">WILLKOMMEN ZURÜCK</span><h2>Einloggen</h2>
+            <label>E-Mail<input id="loginEmail" type="email" autocomplete="username" required></label>
+            <label>Passwort<input id="loginPassword" type="password" autocomplete="current-password" minlength="12" required></label>
+            <button class="primary" type="submit">EINLOGGEN</button>
+          </form>
+          <form id="registerForm" class="account-card">
+            <span class="eyebrow">NEUER PLAYER</span><h2>Demo-Account</h2>
+            <label>Anzeigename<input id="registerName" type="text" maxlength="40" required></label>
+            <label>E-Mail<input id="registerEmail" type="email" autocomplete="username" required></label>
+            <label>Passwort<input id="registerPassword" type="password" autocomplete="new-password" minlength="12" required></label>
+            <button class="secondary-action" type="submit">ACCOUNT ERSTELLEN</button>
+          </form>
+        </div>
+
+        <div id="accountAuthed" class="hidden">
+          <section class="profile-card">
+            <div class="profile-avatar">G</div>
+            <div><span class="eyebrow">DEMO PLAYER</span><h2 id="profileName">Player</h2><p id="profileEmail">—</p></div>
+            <button id="logoutButton" class="ghost danger" type="button">Abmelden</button>
+          </section>
+          <section class="account-stats">
+            <article><span>WALLET</span><strong id="profileBalance">0.00 CR</strong></article>
+            <article><span>STATUS</span><strong>ACTIVE</strong></article>
+            <article><span>MODE</span><strong>DEMO</strong></article>
+          </section>
+          <button class="primary wide js-nav" data-view="cashier" type="button">ZUR DEMO-KASSE</button>
+        </div>
+      </section>
+    </main>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+    <nav class="bottom-nav" aria-label="Mobile Navigation">
+      <button class="nav-item is-active js-nav" data-view="lobby" type="button"><span>⌂</span><small>Home</small></button>
+      <button class="nav-item js-nav" data-view="game" type="button"><span>7</span><small>Spielen</small></button>
+      <button class="nav-item js-nav" data-view="cashier" type="button"><span>◎</span><small>Kasse</small></button>
+      <button class="nav-item js-nav" data-view="account" type="button"><span>●</span><small>Account</small></button>
+    </nav>
+  </div>
 </body>
 </html>
