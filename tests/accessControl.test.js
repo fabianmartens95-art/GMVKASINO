@@ -23,6 +23,13 @@ test('role capabilities are deny-by-default and admin can access every capabilit
 test('access context exposes the effective role and capability set', () => {
   assert.deepEqual(accessContext({ roles: ['finance', 'player'] }), {
     roles: ['finance', 'player'],
-    capabilities: ['casino.play', 'ledger.read', 'profile.read', 'reconciliation.read', 'wallet.read'],
+    capabilities: [
+      'casino.play',
+      'ledger.read',
+      'operations.read',
+      'profile.read',
+      'reconciliation.read',
+      'wallet.read',
+    ],
   })
 })
