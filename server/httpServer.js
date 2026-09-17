@@ -35,6 +35,11 @@ function requestIdFrom(req) {
     : randomUUID()
 }
 
+function idempotencyKeyFrom(req) {
+  const raw = req.headers['idempotency-key']
+  return Array.isArray(raw) ? raw[0] : raw
+}
+
 function sendJson(res, status, payload, extraHeaders = {}) {
   setSecurityHeaders(res)
   res.writeHead(status, {
@@ -408,6 +413,8 @@ export function createHttpServer({
           gameId: body.gameId,
           bet: body.bet,
           accountId: account?.id || null,
+          idempotencyKey: idempotencyKeyFrom(req),
+          requestId,
         })
         sendJson(res, 200, { result, requestId })
         return
