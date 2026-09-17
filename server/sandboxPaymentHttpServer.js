@@ -55,6 +55,9 @@ async function readJson(req, maxBodyBytes) {
 function paymentRoute(req) {
   const url = new URL(req.url || '/', 'http://localhost')
   const pathname = url.pathname
+  if (pathname === '/api/v1/sandbox/payments/queue' || pathname === '/api/sandbox/payments/queue') {
+    return { type: 'queue' }
+  }
   if (pathname === '/api/v1/sandbox/payments' || pathname === '/api/sandbox/payments') {
     return { type: 'list' }
   }
@@ -88,6 +91,7 @@ export function createSandboxPaymentHttpServer({
   authService = service?.authService,
   auditLog = service?.auditLog,
   paymentService = service?.paymentService,
+  paymentQueue = service?.paymentQueue,
   log = console.log,
   ...baseOptions
 } = {}) {
@@ -116,7 +120,9 @@ export function createSandboxPaymentHttpServer({
       ? '/api/v1/sandbox/payments/:id/transition'
       : route.type === 'create'
         ? `/api/v1/sandbox/payments/${route.kind === 'deposit' ? 'deposits' : 'withdrawals'}`
-        : '/api/v1/sandbox/payments'
+        : route.type === 'queue'
+          ? '/api/v1/sandbox/payments/queue'
+          : '/api/v1/sandbox/payments'
 
     res.setHeader('X-Request-Id', requestId)
     res.once('finish', () => {
@@ -140,6 +146,19 @@ export function createSandboxPaymentHttpServer({
     try {
       if (!paymentService) {
         throw new CasinoError(503, 'SANDBOX_PAYMENTS_UNAVAILABLE', 'Sandbox payments require PostgreSQL mode')
+      }
+
+      if (route.type === 'queue' && req.method === 'GET') {
+        const { account } = await requiredProfile(req, authService, 'payments.sandbox.manage', auditLog, requestId)
+        if (!paymentQueue) throw new CasinoError(503, 'SANDBOX_PAYMENT_QUEUE_UNAVAILABLE', 'Sandbox payment queue requires PostgreSQL mode')
+        const operations = await paymentQueue.list()
+        auditLog?.record?.('sandbox_payment.queue_read', {
+          requestId,
+          accountId: account.id,
+          operationCount: operations.length,
+        })
+        sendJson(res, 200, { sandbox: true, mode: 'demo', operations, requestId })
+        return
       }
 
       if (route.type === 'list' && req.method === 'GET') {
