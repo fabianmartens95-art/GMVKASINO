@@ -56,6 +56,7 @@ export function createOperationsHttpServer({
   metrics = service?.metrics,
   authService = service?.authService,
   auditLog = service?.auditLog,
+  paymentReconciler = service?.paymentReconciler,
   log = console.log,
   ...baseOptions
 } = {}) {
@@ -117,7 +118,10 @@ export function createOperationsHttpServer({
 
       requireAccountCapability(profile.account, 'operations.read', { auditLog, requestId })
 
-      const readiness = await service.checkReadiness()
+      const [readiness, paymentHealth] = await Promise.all([
+        service.checkReadiness(),
+        paymentReconciler?.sanitizedSummary?.() || Promise.resolve(null),
+      ])
       const games = service.getGames()
       const metricsSnapshot = metrics?.snapshot?.() || null
       const overview = {
@@ -126,6 +130,7 @@ export function createOperationsHttpServer({
         revision: config.deploymentRevision || null,
         persistence: readiness?.backend || 'unknown',
         games: summarizeGames(games),
+        payments: paymentHealth,
         metrics: metricsSnapshot,
         generatedAt: new Date().toISOString(),
       }
@@ -134,6 +139,8 @@ export function createOperationsHttpServer({
         requestId,
         accountId: profile.account.id,
         roles: profile.account.roles || [],
+        paymentReconciliationOk: paymentHealth?.ok ?? null,
+        paymentMismatchCount: paymentHealth?.mismatchCount ?? null,
       })
 
       sendJson(res, 200, { overview, requestId })
