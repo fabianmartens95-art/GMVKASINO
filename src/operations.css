@@ -78,7 +78,8 @@
 .ops-login-form button,
 .ops-actions button,
 .ops-alert button,
-.ops-link-button {
+.ops-link-button,
+.ops-inline-actions button {
   border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: 10px;
   padding: 11px 14px;
@@ -219,6 +220,27 @@
 
 .ops-table-wrap td {
   color: #d7dae2;
+}
+
+.ops-inline-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.ops-inline-actions button {
+  padding: 6px 9px;
+  font-size: 11px;
+}
+
+.ops-inline-actions button:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+
+.ops-inline-actions span {
+  color: #858b99;
 }
 
 @media (max-width: 900px) {
