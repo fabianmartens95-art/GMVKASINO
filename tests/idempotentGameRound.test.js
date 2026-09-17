@@ -106,6 +106,7 @@ integrationTest('PostgreSQL concurrent duplicate round settles the ledger once a
         payout: 0,
         spinId: secondSpinId,
         gameId: 'golden-vault',
+        accountId: firstSession.accountId,
         ownerId: firstSession.accountId,
         idempotencyKey,
         requestFingerprint,
