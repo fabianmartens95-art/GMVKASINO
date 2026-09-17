@@ -56,7 +56,7 @@ The adapter must never return or control authoritative fields such as:
 
 Those values are assigned by the authoritative platform after game resolution.
 
-A normalized result must contain a finite non-negative `totalWin`. Additional game-specific fields are allowed when JSON-serializable.
+A normalized result must contain a finite non-negative `totalWin` that fits the DEMO asset's two-decimal precision exactly; excess precision fails closed and is never silently rounded. Additional game-specific fields are allowed when JSON-serializable.
 
 ## Reference implementation
 
