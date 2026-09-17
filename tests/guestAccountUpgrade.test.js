@@ -82,7 +82,7 @@ integrationTest('guest registration upgrades the existing account without re-cre
         'Content-Type': 'application/json',
         'X-Demo-Session': guest.id,
       },
-      body: JSON.stringify({ gameId: 'golden-vault', bet: 1 }),
+      body: JSON.stringify({ gameId: 'golden-vault', bet: 1, idempotencyKey: 'guest-upgrade-spin-01' }),
     })
     assert.equal(guestSpinResponse.status, 200)
     assert.equal((await guestSpinResponse.json()).result.balance, 1049)
@@ -155,7 +155,7 @@ integrationTest('guest registration upgrades the existing account without re-cre
         Authorization: `Bearer ${upgraded.auth.token}`,
         'X-Demo-Session': guest.id,
       },
-      body: JSON.stringify({ gameId: 'golden-vault', bet: 1 }),
+      body: JSON.stringify({ gameId: 'golden-vault', bet: 1, idempotencyKey: 'guest-upgrade-spin-02' }),
     })
     assert.equal(continuedSpin.status, 200)
     assert.equal((await continuedSpin.json()).result.balance, 1098)

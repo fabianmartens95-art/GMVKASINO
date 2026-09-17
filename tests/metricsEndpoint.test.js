@@ -59,7 +59,7 @@ test('metrics endpoint is protected and contains no player/session/token secrets
         'Content-Type': 'application/json',
         'X-Demo-Session': session.id,
       },
-      body: JSON.stringify({ gameId: 'golden-vault', bet: 1 }),
+      body: JSON.stringify({ gameId: 'golden-vault', bet: 1, idempotencyKey: 'metrics-spin-0001' }),
     })
     assert.equal(spinResponse.status, 200)
 

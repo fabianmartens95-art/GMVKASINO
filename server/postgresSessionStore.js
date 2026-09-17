@@ -1,6 +1,7 @@
 import { randomBytes, randomUUID } from 'node:crypto'
 import { runMigrations } from './migrations.js'
 import { PostgresLedger } from './postgresLedger.js'
+import { decimalToAtomic } from './amounts.js'
 
 function cleanPlayer(player) {
   return typeof player === 'string' ? player.trim().slice(0, 40) : ''
@@ -22,6 +23,17 @@ function mapRow(row) {
     authRequired: Boolean(row.auth_required),
   }
 }
+
+function mapRound(row) {
+  if (!row) return null
+  return {
+    roundId: row.id,
+    requestFingerprint: row.request_fingerprint,
+    response: row.response_json,
+  }
+}
+
+const GAME_ROUND_IDEMPOTENCY_CONSTRAINT = 'game_rounds_account_id_idempotency_key_key'
 
 export class PostgresSessionStore {
   constructor({
@@ -257,9 +269,46 @@ export class PostgresSessionStore {
     return Boolean(result.rows[0])
   }
 
-  async applySpin(sessionId, { bet, payout, spinId = randomUUID(), gameId = 'unknown', accountId = null }) {
+  async getSpinReplay({ ownerId, idempotencyKey, requestFingerprint } = {}) {
+    if (!ownerId || !idempotencyKey || !requestFingerprint) return null
+    const result = await this.pool.query(
+      `SELECT id, request_fingerprint, response_json
+       FROM game_rounds
+       WHERE account_id = $1
+         AND idempotency_key = $2`,
+      [ownerId, idempotencyKey],
+    )
+    const existing = mapRound(result.rows[0])
+    if (!existing) return null
+    if (existing.requestFingerprint !== requestFingerprint) {
+      return {
+        conflict: true,
+        roundId: existing.roundId,
+      }
+    }
+    return {
+      conflict: false,
+      replayed: true,
+      roundId: existing.roundId,
+      response: existing.response,
+    }
+  }
+
+  async applySpin(sessionId, {
+    bet,
+    payout,
+    spinId = randomUUID(),
+    gameId = 'unknown',
+    accountId = null,
+    ownerId = null,
+    idempotencyKey = null,
+    requestFingerprint = null,
+    roundResponse = null,
+    requestId = null,
+  }) {
     const client = await this.pool.connect()
     const { timestamp, idleCutoff, absoluteCutoff } = this.cutoffs()
+    let resolvedOwnerId = ownerId
 
     try {
       await client.query('BEGIN')
@@ -278,6 +327,36 @@ export class PostgresSessionStore {
         await client.query('ROLLBACK')
         await this.deleteExpiredSession(sessionId, idleCutoff, absoluteCutoff)
         return null
+      }
+
+      resolvedOwnerId = resolvedOwnerId || session.account_id
+
+      if (idempotencyKey && requestFingerprint) {
+        const existingResult = await client.query(
+          `SELECT id, request_fingerprint, response_json
+           FROM game_rounds
+           WHERE account_id = $1
+             AND idempotency_key = $2`,
+          [resolvedOwnerId, idempotencyKey],
+        )
+        const existing = mapRound(existingResult.rows[0])
+        if (existing) {
+          await client.query('COMMIT')
+          if (existing.requestFingerprint !== requestFingerprint) {
+            return {
+              ...mapRow(session),
+              idempotencyConflict: true,
+              roundId: existing.roundId,
+            }
+          }
+          return {
+            ...mapRow(session),
+            replayed: true,
+            idempotencyConflict: false,
+            roundId: existing.roundId,
+            roundResponse: existing.response,
+          }
+        }
       }
 
       const wallet = await this.ledger.settleDemoGame(client, {
@@ -300,15 +379,81 @@ export class PostgresSessionStore {
          RETURNING id, account_id, player, spins, created_at, last_seen_at, auth_required`,
         [sessionId, timestamp],
       )
+      const updated = mapRow(updatedResult.rows[0])
+
+      let finalRoundResponse = null
+      if (idempotencyKey && requestFingerprint && roundResponse) {
+        finalRoundResponse = {
+          ...roundResponse,
+          balance: wallet.balance,
+          spins: updated.spins,
+        }
+        await client.query(
+          `INSERT INTO game_rounds (
+             id, account_id, game_id, asset_code, bet_atomic, payout_atomic,
+             idempotency_key, request_fingerprint, response_json, status,
+             settlement_reference_id, first_request_id, created_at
+           ) VALUES (
+             $1, $2, $3, 'DEMO', $4::numeric, $5::numeric,
+             $6, $7, $8::jsonb, 'settled', $9, $10, $11
+           )`,
+          [
+            spinId,
+            resolvedOwnerId,
+            gameId,
+            decimalToAtomic(bet, 2),
+            decimalToAtomic(payout, 2),
+            idempotencyKey,
+            requestFingerprint,
+            JSON.stringify(finalRoundResponse),
+            spinId,
+            requestId,
+            timestamp,
+          ],
+        )
+      }
 
       await client.query('COMMIT')
       return {
-        ...mapRow(updatedResult.rows[0]),
+        ...updated,
         balance: wallet.balance,
         wallet,
+        replayed: false,
+        idempotencyConflict: false,
+        roundId: spinId,
+        ...(finalRoundResponse ? { roundResponse: finalRoundResponse } : {}),
       }
     } catch (error) {
       await client.query('ROLLBACK').catch(() => {})
+
+      if (
+        error?.code === '23505'
+        && error?.constraint === GAME_ROUND_IDEMPOTENCY_CONSTRAINT
+        && resolvedOwnerId
+        && idempotencyKey
+        && requestFingerprint
+      ) {
+        const replay = await this.getSpinReplay({
+          ownerId: resolvedOwnerId,
+          idempotencyKey,
+          requestFingerprint,
+        })
+        if (replay?.conflict) {
+          return {
+            idempotencyConflict: true,
+            roundId: replay.roundId,
+          }
+        }
+        if (replay?.response) {
+          return {
+            replayed: true,
+            idempotencyConflict: false,
+            roundId: replay.roundId,
+            roundResponse: replay.response,
+          }
+        }
+      }
+
       throw error
     } finally {
       client.release()

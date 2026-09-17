@@ -69,6 +69,11 @@ function writeAuthToken(token) {
   }
 }
 
+function createIdempotencyKey() {
+  if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID()
+  return `spin-${Date.now()}-${Math.random().toString(36).slice(2)}`
+}
+
 async function request(path, {
   method = 'GET',
   body,
@@ -233,24 +238,25 @@ export async function syncDemoPlayer(player) {
   return openDemoSession({ player })
 }
 
-async function performSpin({ gameId, bet }) {
+async function performSpin({ gameId, bet, idempotencyKey }) {
   const payload = await request('/spin', {
     method: 'POST',
-    body: { gameId, bet },
+    body: { gameId, bet, idempotencyKey },
   })
   return payload.result
 }
 
 export async function spinDemo({ gameId, bet }) {
   if (!readSessionId()) await openDemoSession()
+  const idempotencyKey = createIdempotencyKey()
 
   try {
-    return await performSpin({ gameId, bet })
+    return await performSpin({ gameId, bet, idempotencyKey })
   } catch (error) {
     if (error.status !== 401 || error.code === 'AUTH_SESSION_REQUIRED') throw error
     writeSessionId('')
     await openDemoSession()
-    return performSpin({ gameId, bet })
+    return performSpin({ gameId, bet, idempotencyKey })
   }
 }
 

@@ -20,6 +20,7 @@ function integrationTest(name, fn) {
 async function resetAuthData(pool) {
   await pool.query('DELETE FROM auth_sessions')
   await pool.query('DELETE FROM demo_sessions')
+  await pool.query('DELETE FROM game_rounds')
   await pool.query('DELETE FROM ledger_entries')
   await pool.query('DELETE FROM ledger_transactions')
   await pool.query('DELETE FROM ledger_accounts WHERE account_id IS NOT NULL')
@@ -100,7 +101,7 @@ integrationTest('auth HTTP flow binds gameplay to the registered account and rej
         'Content-Type': 'application/json',
         'X-Demo-Session': registered.session.id,
       },
-      body: JSON.stringify({ gameId: 'golden-vault', bet: 1 }),
+      body: JSON.stringify({ gameId: 'golden-vault', bet: 1, idempotencyKey: 'auth-http-unauth-01' }),
     })
     assert.equal(unauthenticatedSpin.status, 401)
     assert.equal((await unauthenticatedSpin.json()).error.code, 'SESSION_REQUIRED')
@@ -124,7 +125,7 @@ integrationTest('auth HTTP flow binds gameplay to the registered account and rej
         Authorization: `Bearer ${secondAccount.auth.token}`,
         'X-Demo-Session': registered.session.id,
       },
-      body: JSON.stringify({ gameId: 'golden-vault', bet: 1 }),
+      body: JSON.stringify({ gameId: 'golden-vault', bet: 1, idempotencyKey: 'auth-http-mismatch-01' }),
     })
     assert.equal(mismatchedSpin.status, 401)
     assert.equal((await mismatchedSpin.json()).error.code, 'SESSION_REQUIRED')
@@ -136,7 +137,7 @@ integrationTest('auth HTTP flow binds gameplay to the registered account and rej
         Authorization: `Bearer ${registered.auth.token}`,
         'X-Demo-Session': registered.session.id,
       },
-      body: JSON.stringify({ gameId: 'golden-vault', bet: 1 }),
+      body: JSON.stringify({ gameId: 'golden-vault', bet: 1, idempotencyKey: 'auth-http-success-01' }),
     })
     assert.equal(authenticatedSpin.status, 200)
     const spin = await authenticatedSpin.json()

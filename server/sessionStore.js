@@ -8,6 +8,10 @@ function createSessionToken() {
   return randomBytes(32).toString('base64url')
 }
 
+function roundKey(ownerId, idempotencyKey) {
+  return `${ownerId}:${idempotencyKey}`
+}
+
 export class SessionStore {
   constructor({
     startingBalance = 1000,
@@ -25,6 +29,7 @@ export class SessionStore {
     this.persistence = persistence
     this.metrics = metrics
     this.sessions = new Map()
+    this.gameRounds = new Map()
 
     for (const session of this.persistence?.load?.() || []) {
       if (session && typeof session.id === 'string') {
@@ -96,15 +101,81 @@ export class SessionStore {
     return removed
   }
 
-  applySpin(sessionId, { bet, payout }) {
+  getSpinReplay({ ownerId, idempotencyKey, requestFingerprint } = {}) {
+    if (!ownerId || !idempotencyKey || !requestFingerprint) return null
+    const existing = this.gameRounds.get(roundKey(ownerId, idempotencyKey))
+    if (!existing) return null
+    if (existing.requestFingerprint !== requestFingerprint) {
+      return {
+        conflict: true,
+        roundId: existing.roundId,
+      }
+    }
+    return {
+      conflict: false,
+      replayed: true,
+      roundId: existing.roundId,
+      response: structuredClone(existing.response),
+    }
+  }
+
+  applySpin(sessionId, {
+    bet,
+    payout,
+    spinId,
+    ownerId = sessionId,
+    idempotencyKey = null,
+    requestFingerprint = null,
+    roundResponse = null,
+  }) {
     const session = this.findMutable(sessionId)
     if (!session) return null
+
+    if (idempotencyKey && requestFingerprint) {
+      const replay = this.getSpinReplay({ ownerId, idempotencyKey, requestFingerprint })
+      if (replay?.conflict) {
+        return {
+          ...this.snapshot(session),
+          idempotencyConflict: true,
+          roundId: replay.roundId,
+        }
+      }
+      if (replay?.response) {
+        return {
+          ...this.snapshot(session),
+          replayed: true,
+          roundId: replay.roundId,
+          roundResponse: replay.response,
+        }
+      }
+    }
 
     session.balance = Number((session.balance - bet + payout).toFixed(2))
     session.spins += 1
     session.lastSeenAt = this.now()
+
+    let finalRoundResponse = null
+    if (idempotencyKey && requestFingerprint && roundResponse) {
+      finalRoundResponse = {
+        ...structuredClone(roundResponse),
+        balance: session.balance,
+        spins: session.spins,
+      }
+      this.gameRounds.set(roundKey(ownerId, idempotencyKey), {
+        roundId: spinId,
+        requestFingerprint,
+        response: finalRoundResponse,
+      })
+    }
+
     this.persist()
-    return this.snapshot(session)
+    return {
+      ...this.snapshot(session),
+      replayed: false,
+      idempotencyConflict: false,
+      ...(spinId ? { roundId: spinId } : {}),
+      ...(finalRoundResponse ? { roundResponse: finalRoundResponse } : {}),
+    }
   }
 
   async checkReadiness() {
