@@ -6,6 +6,7 @@ import {
   idempotencyRef,
   normalizeIdempotencyKey,
 } from './gameRound.js'
+import { PostgresGameRoundStore } from './postgresGameRoundStore.js'
 
 function sessionRef(sessionId) {
   if (!sessionId) return null
@@ -25,7 +26,7 @@ export class CasinoError extends Error {
 export class CasinoService {
   constructor({
     sessionStore,
-    gameRoundStore = sessionStore,
+    gameRoundStore = null,
     rateLimiter,
     auditLog,
     rng,
@@ -35,6 +36,9 @@ export class CasinoService {
   } = {}) {
     this.sessionStore = sessionStore
     this.gameRoundStore = gameRoundStore
+      || (sessionStore?.pool && sessionStore?.ledger
+        ? new PostgresGameRoundStore({ sessionStore })
+        : sessionStore)
     this.rateLimiter = rateLimiter
     this.auditLog = auditLog
     this.rng = rng
