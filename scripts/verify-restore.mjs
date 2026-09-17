@@ -19,6 +19,7 @@ const TABLES = Object.freeze([
   'demo_sessions',
   'auth_sessions',
   'audit_events',
+  'game_rounds',
 ])
 
 function requireUrl(value, name) {
