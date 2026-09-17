@@ -3,6 +3,7 @@ import { SERVER_CONFIG } from './config.js'
 import { SessionStore } from './sessionStore.js'
 import { JsonSessionPersistence } from './jsonSessionPersistence.js'
 import { PostgresSessionStore } from './postgresSessionStore.js'
+import { PostgresGameRoundStore } from './postgresGameRoundStore.js'
 import { AccountAuthService } from './accountAuthService.js'
 import { SlidingWindowRateLimiter } from './rateLimiter.js'
 import { AuditLog, PostgresAuditEventStore } from './auditLog.js'
@@ -67,9 +68,13 @@ export async function createDefaultService(config = SERVER_CONFIG) {
   const auditStore = config.databaseUrl && sessionStore.pool
     ? new PostgresAuditEventStore({ pool: sessionStore.pool })
     : null
+  const gameRoundStore = config.databaseUrl && sessionStore.pool
+    ? new PostgresGameRoundStore({ sessionStore })
+    : sessionStore
 
   return new CasinoService({
     sessionStore,
+    gameRoundStore,
     rateLimiter: new SlidingWindowRateLimiter({
       limit: config.rateLimitMaxSpins,
       windowMs: config.rateLimitWindowMs,
