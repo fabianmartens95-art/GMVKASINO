@@ -3,6 +3,7 @@ import Header from './components/Header.jsx'
 import CasinoLobby from './components/CasinoLobby.jsx'
 import SlotMachine from './components/SlotMachine.jsx'
 import LoginModal from './components/LoginModal.jsx'
+import OperationsConsole from './components/OperationsConsole.jsx'
 import { openDemoSession, syncDemoPlayer } from './api/casinoApi.js'
 import { usePersistentState } from './hooks/usePersistentState.js'
 
@@ -10,6 +11,7 @@ const STARTING_BALANCE = 1000
 const DEMO_GAME_ID = 'golden-vault'
 
 function routeFromHash() {
+  if (window.location.hash === '#ops') return 'ops'
   return window.location.hash === `#game/${DEMO_GAME_ID}` ? 'slot' : 'lobby'
 }
 
@@ -27,6 +29,8 @@ export default function App() {
   }, [])
 
   useEffect(() => {
+    if (routeFromHash() === 'ops') return undefined
+
     let active = true
 
     openDemoSession({ player })
@@ -46,7 +50,8 @@ export default function App() {
   }, [])
 
   function navigate(nextView) {
-    window.location.hash = nextView === 'slot' ? `game/${DEMO_GAME_ID}` : 'lobby'
+    if (nextView === 'ops') window.location.hash = 'ops'
+    else window.location.hash = nextView === 'slot' ? `game/${DEMO_GAME_ID}` : 'lobby'
     setView(nextView)
   }
 
@@ -61,6 +66,10 @@ export default function App() {
     } catch {
       setServerState('offline')
     }
+  }
+
+  if (view === 'ops') {
+    return <OperationsConsole onExit={() => navigate('lobby')} />
   }
 
   return (
