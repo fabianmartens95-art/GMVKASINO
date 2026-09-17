@@ -137,6 +137,7 @@ test('API v1 creates a session, exposes a DEMO wallet and resolves a server-side
         'Content-Type': 'application/json',
         'X-Demo-Session': session.id,
         'X-Request-Id': 'qa-request-1234',
+        'Idempotency-Key': 'qa-spin-request-1234',
       },
       body: JSON.stringify({ gameId: 'golden-vault', bet: 1 }),
     })
@@ -145,6 +146,7 @@ test('API v1 creates a session, exposes a DEMO wallet and resolves a server-side
     const { result } = await spinResponse.json()
     assert.equal(result.totalWin, 50)
     assert.equal(result.balance, 1049)
+    assert.ok(result.roundId)
   } finally {
     await close(server)
   }
