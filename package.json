@@ -11,6 +11,7 @@
     "db:migrate": "node scripts/migrate.mjs",
     "db:restore:verify": "node scripts/verify-restore.mjs",
     "ledger:reconcile": "node scripts/reconcile-ledger.mjs",
+    "payments:reconcile": "node scripts/reconcile-payments.mjs",
     "start": "node server/index.js",
     "smoke": "node scripts/smoke.mjs",
     "staging:e2e": "node scripts/staging-money-flow.mjs",
