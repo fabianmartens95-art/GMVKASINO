@@ -31,9 +31,10 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    if (['ops', 'cashier'].includes(routeFromHash())) return undefined
+    if (['ops', 'cashier'].includes(view)) return undefined
 
     let active = true
+    setServerState('connecting')
 
     openDemoSession({ player })
       .then((session) => {
@@ -49,7 +50,7 @@ export default function App() {
     return () => {
       active = false
     }
-  }, [])
+  }, [view])
 
   function navigate(nextView) {
     if (nextView === 'ops') window.location.hash = 'ops'
