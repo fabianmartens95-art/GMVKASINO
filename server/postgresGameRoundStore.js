@@ -19,9 +19,9 @@ export class PostgresGameRoundStore {
     fingerprint,
     sessionRef,
     requestId = null,
-  } = {}, resolveResult) {
+  } = {}, prepareResult) {
     if (!sessionId) return null
-    if (typeof resolveResult !== 'function') throw new Error('resolveResult is required')
+    if (typeof prepareResult !== 'function') throw new Error('prepareResult is required')
 
     const client = await this.pool.connect()
     const { timestamp, idleCutoff, absoluteCutoff } = this.sessionStore.cutoffs()
@@ -110,6 +110,11 @@ export class PostgresGameRoundStore {
         }
       }
 
+      const prepared = await prepareResult({ roundId })
+      if (!prepared || typeof prepared.resolve !== 'function') {
+        throw new Error('prepareResult must return a resolve function')
+      }
+
       const walletBefore = await this.ledger.getWallet(client, session.account_id, assetCode)
       if (!walletBefore) throw new Error('Game round account is missing its wallet')
       if (BigInt(walletBefore.balanceAtomic) < BigInt(betAtomic)) {
@@ -124,7 +129,7 @@ export class PostgresGameRoundStore {
         [roundId],
       )
 
-      const result = await resolveResult({ roundId })
+      const result = await prepared.resolve()
 
       await client.query(
         `UPDATE game_rounds
