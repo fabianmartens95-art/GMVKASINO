@@ -1,4 +1,4 @@
-import { randomUUID, timingSafeEqual } from 'node:crypto'
+import { createHash, randomUUID, timingSafeEqual } from 'node:crypto'
 import { createServer } from 'node:http'
 import { readFile } from 'node:fs/promises'
 import { extname, isAbsolute, join, relative, resolve, sep } from 'node:path'
@@ -34,6 +34,11 @@ function requestIdFrom(req) {
   return typeof value === 'string' && /^[A-Za-z0-9._-]{8,80}$/.test(value)
     ? value
     : randomUUID()
+}
+
+function opaqueRef(value) {
+  if (!value) return null
+  return createHash('sha256').update(String(value)).digest('hex').slice(0, 16)
 }
 
 function sendJson(res, status, payload, extraHeaders = {}) {
@@ -140,6 +145,12 @@ async function optionalAuthAccount(req, authService, {
   }
   const authenticated = await authService.authenticate(token)
   if (!authenticated) {
+    auditLog?.record('auth.session_rejected', {
+      requestId,
+      authSessionRef: opaqueRef(token),
+      capability,
+      reason: 'missing_or_expired',
+    })
     throw new CasinoError(401, 'AUTH_SESSION_REQUIRED', 'Authentication session is missing or expired')
   }
   if (capability) {
@@ -158,10 +169,21 @@ async function requiredAuthProfile(req, authService, {
   }
   const token = bearerToken(req)
   if (!token) {
+    auditLog?.record('auth.session_rejected', {
+      requestId,
+      capability,
+      reason: 'missing',
+    })
     throw new CasinoError(401, 'AUTH_SESSION_REQUIRED', 'Authentication session is required')
   }
   const profile = await authService.profile(token)
   if (!profile) {
+    auditLog?.record('auth.session_rejected', {
+      requestId,
+      authSessionRef: opaqueRef(token),
+      capability,
+      reason: 'missing_or_expired',
+    })
     throw new CasinoError(401, 'AUTH_SESSION_REQUIRED', 'Authentication session is missing or expired')
   }
   if (capability) {
@@ -329,11 +351,17 @@ export function createHttpServer({
             session = await service.getSession(guestSession.id, { accountId: authResult.account.id })
           } else {
             authResult = await authService.register(body)
-            session = await service.openSession({ accountId: authResult.account.id })
+            session = await service.openSession({
+              accountId: authResult.account.id,
+              requestId,
+            })
           }
         } else {
           authResult = await authService.login(body)
-          session = await service.openSession({ accountId: authResult.account.id })
+          session = await service.openSession({
+            accountId: authResult.account.id,
+            requestId,
+          })
         }
 
         const event = authResult.upgraded
@@ -342,6 +370,13 @@ export function createHttpServer({
             ? 'auth.registered'
             : 'auth.logged_in'
         metrics?.incrementEvent?.(event)
+        auditLog?.record(event, {
+          requestId,
+          accountId: authResult.account.id,
+          authSessionRef: opaqueRef(authResult.auth?.token),
+          sessionRef: opaqueRef(session?.id),
+          upgraded: Boolean(authResult.upgraded),
+        })
         sendJson(res, apiPath === '/auth/register' ? 201 : 200, {
           account: authResult.account,
           wallet: authResult.wallet,
@@ -367,10 +402,20 @@ export function createHttpServer({
         const { token, profile } = await requiredAuthProfile(req, authService)
         const demoSessionId = sessionIdFrom(req)
         if (demoSessionId) {
-          await service.invalidateSession(demoSessionId, { accountId: profile.account.id }).catch(() => {})
+          await service.invalidateSession(demoSessionId, {
+            accountId: profile.account.id,
+            requestId,
+          }).catch(() => {})
         }
-        await authService.logout(token)
+        const revoked = await authService.logout(token)
         metrics?.incrementEvent?.('auth.logged_out')
+        auditLog?.record('auth.logged_out', {
+          requestId,
+          accountId: profile.account.id,
+          authSessionRef: opaqueRef(token),
+          sessionRef: opaqueRef(demoSessionId),
+          revoked,
+        })
         sendJson(res, 200, { loggedOut: true, requestId })
         return
       }
@@ -397,7 +442,10 @@ export function createHttpServer({
           auditLog,
           requestId,
         })
-        const session = await service.rotateSession(sessionIdFrom(req), { accountId: account?.id || null })
+        const session = await service.rotateSession(sessionIdFrom(req), {
+          accountId: account?.id || null,
+          requestId,
+        })
         sendJson(res, 200, { session, requestId })
         return
       }
@@ -408,7 +456,10 @@ export function createHttpServer({
           auditLog,
           requestId,
         })
-        await service.invalidateSession(sessionIdFrom(req), { accountId: account?.id || null })
+        await service.invalidateSession(sessionIdFrom(req), {
+          accountId: account?.id || null,
+          requestId,
+        })
         sendJson(res, 200, { invalidated: true, requestId })
         return
       }
@@ -424,6 +475,7 @@ export function createHttpServer({
           sessionId: sessionIdFrom(req),
           player: body.player,
           accountId: account?.id || null,
+          requestId,
         })
         sendJson(res, 200, { session, requestId })
         return
@@ -482,6 +534,15 @@ export function createHttpServer({
       const headers = status === 429 && error.details?.retryAfterMs
         ? { 'Retry-After': String(Math.ceil(error.details.retryAfterMs / 1000)) }
         : {}
+
+      if (apiPath?.startsWith('/auth/')) {
+        auditLog?.record('auth.request_failed', {
+          requestId,
+          action: apiPath.slice('/auth/'.length),
+          status,
+          code,
+        })
+      }
 
       sendJson(res, status, {
         error: {
