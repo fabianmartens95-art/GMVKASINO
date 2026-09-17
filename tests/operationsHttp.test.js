@@ -28,9 +28,24 @@ function fixture() {
   const authService = {
     profile: async (token) => profiles[token] || null,
   }
+  const paymentReconciler = {
+    sanitizedSummary: async () => ({
+      ok: true,
+      checkedAt: '2026-09-17T17:00:00.000Z',
+      sandbox: true,
+      mode: 'demo',
+      operationsChecked: 7,
+      paymentTransactionsChecked: 8,
+      countsByKind: { deposit: 3, withdrawal: 4 },
+      countsByStatus: { completed: 5, reserved: 2 },
+      mismatchCount: 0,
+      mismatchCategories: { operations: 0, transactions: 0, events: 0, reserves: 0 },
+    }),
+  }
   const service = {
     metrics,
     authService,
+    paymentReconciler,
     auditLog: {
       record(event, data) {
         auditEvents.push({ event, data })
@@ -48,7 +63,7 @@ function fixture() {
     metricsToken: '',
   }
 
-  return { service, authService, metrics, auditEvents, config }
+  return { service, authService, paymentReconciler, metrics, auditEvents, config }
 }
 
 test('operations.read is limited to staff roles', () => {
@@ -93,7 +108,7 @@ test('operations overview requires an authenticated staff capability', async () 
   }
 })
 
-test('authorized operations overview is read-only, sanitized and audited', async () => {
+test('authorized operations overview is read-only, sanitized, payment-aware and audited', async () => {
   const { service, authService, config, auditEvents } = fixture()
   const server = createOperationsHttpServer({
     service,
@@ -119,17 +134,25 @@ test('authorized operations overview is read-only, sanitized and audited', async
     assert.equal(payload.overview.persistence, 'postgres')
     assert.equal(payload.overview.revision, 'a'.repeat(40))
     assert.deepEqual(payload.overview.games, { total: 2, playable: 1, comingSoon: 1 })
+    assert.equal(payload.overview.payments.ok, true)
+    assert.equal(payload.overview.payments.sandbox, true)
+    assert.equal(payload.overview.payments.operationsChecked, 7)
+    assert.equal(payload.overview.payments.mismatchCount, 0)
+    assert.deepEqual(payload.overview.payments.countsByStatus, { completed: 5, reserved: 2 })
     assert.equal(payload.requestId, 'ops-test-request-123')
 
     const serialized = JSON.stringify(payload)
     assert.equal(serialized.includes('support-token'), false)
     assert.equal(serialized.includes('password'), false)
     assert.equal(serialized.includes('wallet'), false)
+    assert.equal(serialized.includes('accountId'), false)
 
     const audit = auditEvents.find((entry) => entry.event === 'operations.overview_read')
     assert.ok(audit)
     assert.equal(audit.data.requestId, 'ops-test-request-123')
     assert.equal(audit.data.accountId, 'support-1')
+    assert.equal(audit.data.paymentReconciliationOk, true)
+    assert.equal(audit.data.paymentMismatchCount, 0)
   } finally {
     await close(server)
   }
