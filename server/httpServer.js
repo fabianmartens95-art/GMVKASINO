@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises'
 import { extname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { CasinoError } from './casinoService.js'
+import { requireAccountCapability } from './authorization.js'
 
 const PROJECT_ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)))
 const DEFAULT_STATIC_DIR = join(PROJECT_ROOT, 'dist')
@@ -127,7 +128,11 @@ function consumeAuthRateLimit(req, authRateLimiter) {
   }
 }
 
-async function optionalAuthAccount(req, authService) {
+async function optionalAuthAccount(req, authService, {
+  capability = null,
+  auditLog = null,
+  requestId = null,
+} = {}) {
   const token = bearerToken(req)
   if (!token) return null
   if (!authService) {
@@ -137,10 +142,17 @@ async function optionalAuthAccount(req, authService) {
   if (!authenticated) {
     throw new CasinoError(401, 'AUTH_SESSION_REQUIRED', 'Authentication session is missing or expired')
   }
+  if (capability) {
+    requireAccountCapability(authenticated.account, capability, { auditLog, requestId })
+  }
   return authenticated.account
 }
 
-async function requiredAuthProfile(req, authService) {
+async function requiredAuthProfile(req, authService, {
+  capability = null,
+  auditLog = null,
+  requestId = null,
+} = {}) {
   if (!authService) {
     throw new CasinoError(503, 'AUTH_UNAVAILABLE', 'Account authentication requires PostgreSQL mode')
   }
@@ -151,6 +163,9 @@ async function requiredAuthProfile(req, authService) {
   const profile = await authService.profile(token)
   if (!profile) {
     throw new CasinoError(401, 'AUTH_SESSION_REQUIRED', 'Authentication session is missing or expired')
+  }
+  if (capability) {
+    requireAccountCapability(profile.account, capability, { auditLog, requestId })
   }
   return { token, profile }
 }
@@ -207,6 +222,7 @@ export function createHttpServer({
   metrics = service?.metrics,
   authService = service?.authService,
   authRateLimiter = service?.authRateLimiter,
+  auditLog = service?.auditLog,
 } = {}) {
   if (!service) throw new Error('service is required')
   if (!config) throw new Error('config is required')
@@ -338,7 +354,11 @@ export function createHttpServer({
       }
 
       if (apiPath === '/auth/me' && req.method === 'GET') {
-        const { profile } = await requiredAuthProfile(req, authService)
+        const { profile } = await requiredAuthProfile(req, authService, {
+          capability: 'profile.read',
+          auditLog,
+          requestId,
+        })
         sendJson(res, 200, { profile, requestId })
         return
       }
@@ -361,28 +381,44 @@ export function createHttpServer({
       }
 
       if (apiPath === '/wallet' && req.method === 'GET') {
-        const account = await optionalAuthAccount(req, authService)
+        const account = await optionalAuthAccount(req, authService, {
+          capability: 'wallet.read',
+          auditLog,
+          requestId,
+        })
         const wallet = await service.getWallet(sessionIdFrom(req), { accountId: account?.id || null })
         sendJson(res, 200, { wallet, requestId })
         return
       }
 
       if (apiPath === '/session/rotate' && req.method === 'POST') {
-        const account = await optionalAuthAccount(req, authService)
+        const account = await optionalAuthAccount(req, authService, {
+          capability: 'casino.play',
+          auditLog,
+          requestId,
+        })
         const session = await service.rotateSession(sessionIdFrom(req), { accountId: account?.id || null })
         sendJson(res, 200, { session, requestId })
         return
       }
 
       if (apiPath === '/session' && req.method === 'DELETE') {
-        const account = await optionalAuthAccount(req, authService)
+        const account = await optionalAuthAccount(req, authService, {
+          capability: 'casino.play',
+          auditLog,
+          requestId,
+        })
         await service.invalidateSession(sessionIdFrom(req), { accountId: account?.id || null })
         sendJson(res, 200, { invalidated: true, requestId })
         return
       }
 
       if (apiPath === '/session' && req.method === 'POST') {
-        const account = await optionalAuthAccount(req, authService)
+        const account = await optionalAuthAccount(req, authService, {
+          capability: 'casino.play',
+          auditLog,
+          requestId,
+        })
         const body = await readJson(req, config.maxBodyBytes)
         const session = await service.openSession({
           sessionId: sessionIdFrom(req),
@@ -394,14 +430,22 @@ export function createHttpServer({
       }
 
       if (apiPath === '/session' && req.method === 'GET') {
-        const account = await optionalAuthAccount(req, authService)
+        const account = await optionalAuthAccount(req, authService, {
+          capability: 'casino.play',
+          auditLog,
+          requestId,
+        })
         const session = await service.getSession(sessionIdFrom(req), { accountId: account?.id || null })
         sendJson(res, 200, { session, requestId })
         return
       }
 
       if (apiPath === '/spin' && req.method === 'POST') {
-        const account = await optionalAuthAccount(req, authService)
+        const account = await optionalAuthAccount(req, authService, {
+          capability: 'casino.play',
+          auditLog,
+          requestId,
+        })
         const body = await readJson(req, config.maxBodyBytes)
         if (typeof body.idempotencyKey !== 'string' || !body.idempotencyKey.trim()) {
           throw new CasinoError(400, 'IDEMPOTENCY_KEY_REQUIRED', 'Spin requests require an idempotency key')
