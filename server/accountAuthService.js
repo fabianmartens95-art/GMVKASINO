@@ -72,6 +72,8 @@ function accountSnapshot(row, roles = []) {
     email: row.email,
     displayName: row.display_name || '',
     status: row.status,
+    emailVerified: row.email_verified_at !== null && row.email_verified_at !== undefined,
+    mfaEnrolled: row.mfa_enrolled_at !== null && row.mfa_enrolled_at !== undefined,
     roles: normalizeAccountRoles(roles),
     createdAt: Number(row.created_at),
     updatedAt: row.updated_at === null || row.updated_at === undefined
@@ -152,7 +154,7 @@ export class AccountAuthService {
              password_hash = $5,
              updated_at = $6
          WHERE id = $1
-         RETURNING id, email, display_name, status, created_at, updated_at`,
+         RETURNING id, email, display_name, status, email_verified_at, mfa_enrolled_at, created_at, updated_at`,
         [
           identity.account.id,
           normalizedEmail,
@@ -199,7 +201,7 @@ export class AccountAuthService {
     try {
       await client.query('BEGIN')
       const existing = await client.query(
-        `SELECT id, email, display_name, status, created_at, updated_at,
+        `SELECT id, email, display_name, status, email_verified_at, mfa_enrolled_at, created_at, updated_at,
                 password_scheme, password_salt, password_hash
          FROM accounts
          WHERE id = $1
@@ -241,7 +243,7 @@ export class AccountAuthService {
              password_hash = $5,
              updated_at = $6
          WHERE id = $1
-         RETURNING id, email, display_name, status, created_at, updated_at`,
+         RETURNING id, email, display_name, status, email_verified_at, mfa_enrolled_at, created_at, updated_at`,
         [
           accountId,
           normalizedEmail,
@@ -280,7 +282,7 @@ export class AccountAuthService {
     const normalizedEmail = normalizeEmail(email)
     const validPassword = validatePassword(password)
     const result = await this.pool.query(
-      `SELECT id, email, display_name, status, created_at, updated_at,
+      `SELECT id, email, display_name, status, email_verified_at, mfa_enrolled_at, created_at, updated_at,
               password_scheme, password_salt, password_hash
        FROM accounts
        WHERE email = $1`,
@@ -328,7 +330,9 @@ export class AccountAuthService {
            AND expires_at > $2
          RETURNING account_id, expires_at
        )
-       SELECT a.id, a.email, a.display_name, a.status, a.created_at, a.updated_at,
+       SELECT a.id, a.email, a.display_name, a.status,
+              a.email_verified_at, a.mfa_enrolled_at,
+              a.created_at, a.updated_at,
               touched.expires_at
        FROM touched
        JOIN accounts a ON a.id = touched.account_id
