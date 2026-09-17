@@ -65,7 +65,7 @@ test('client migrates the legacy localStorage bearer token into sessionStorage',
   })
 })
 
-test('spin recovers once from an expired bearer token by creating a fresh session', async () => {
+test('spin recovers once from an expired bearer token and preserves the logical round idempotency key', async () => {
   await withBrowser(async ({ sessionStorage }) => {
     sessionStorage.setItem(SESSION_KEY, 'expired-session-token')
     const calls = []
@@ -83,7 +83,7 @@ test('spin recovers once from an expired bearer token by creating a fresh sessio
         })
       }
       return jsonResponse({
-        result: { gameId: 'golden-vault', bet: 1, balance: 999, totalWin: 0, spins: 1 },
+        result: { roundId: 'round-1', gameId: 'golden-vault', bet: 1, balance: 999, totalWin: 0, spins: 1 },
       })
     }
 
@@ -93,8 +93,10 @@ test('spin recovers once from an expired bearer token by creating a fresh sessio
     assert.equal(result.balance, 999)
     assert.equal(calls.length, 3)
     assert.equal(calls[0].options.headers['X-Demo-Session'], 'expired-session-token')
+    assert.match(calls[0].options.headers['Idempotency-Key'], /^spin-/)
     assert.equal(calls[1].options.headers['X-Demo-Session'], undefined)
     assert.equal(calls[2].options.headers['X-Demo-Session'], 'fresh-session-token')
+    assert.equal(calls[2].options.headers['Idempotency-Key'], calls[0].options.headers['Idempotency-Key'])
     assert.equal(sessionStorage.getItem(SESSION_KEY), 'fresh-session-token')
   })
 })
