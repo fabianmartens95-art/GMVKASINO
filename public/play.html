@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#09080d">
+  <meta name="description" content="GMVKASINO playable browser demo">
+  <title>GMVKASINO — Browser Demo</title>
+  <link rel="stylesheet" href="/play.css">
+  <script src="/play.js" defer></script>
+</head>
+<body>
+  <main class="showcase-shell">
+    <header class="showcase-header">
+      <div class="brand"><span class="brand-mark">G</span><span><strong>GMV</strong>KASINO</span></div>
+      <span class="demo-pill">DEMO ONLY</span>
+    </header>
+
+    <section class="intro">
+      <span class="eyebrow">BROWSER SHOWCASE</span>
+      <h1>Golden Vault</h1>
+      <p>Spielbare Slot-Demo mit serverseitig verwaltetem DEMO-Guthaben. Kein Echtgeld.</p>
+    </section>
+
+    <section class="machine" aria-label="Golden Vault demo slot">
+      <div class="machine-crown">GOLDEN VAULT</div>
+      <div id="reels" class="reels" aria-live="polite">
+        <div class="symbol">7</div><div class="symbol">◆</div><div class="symbol">BAR</div>
+        <div class="symbol">🍒</div><div class="symbol">🔔</div><div class="symbol">🍋</div>
+        <div class="symbol">BAR</div><div class="symbol">7</div><div class="symbol">◆</div>
+      </div>
+
+      <div class="status-row">
+        <div><span>WIN</span><strong id="lastWin">0.00</strong></div>
+        <div class="message" id="message">Demo wird verbunden…</div>
+        <div class="align-right"><span>CREDIT</span><strong id="balance">1000.00</strong></div>
+      </div>
+
+      <div class="controls">
+        <div class="bet-box">
+          <span>BET</span>
+          <div class="bet-controls">
+            <button id="betDown" type="button" aria-label="Einsatz senken">−</button>
+            <strong id="bet">5.00</strong>
+            <button id="betUp" type="button" aria-label="Einsatz erhöhen">+</button>
+          </div>
+        </div>
+
+        <button id="spin" class="spin" type="button" disabled>
+          <span>SPIN</span>
+          <small id="spinBet">5.00 CR</small>
+        </button>
+
+        <div class="lines-box"><span>LINES</span><strong>5</strong><small>fixed</small></div>
+      </div>
+    </section>
+
+    <section class="info-grid">
+      <article><strong>Server-authoritativ</strong><span>Gewinn und Guthaben kommen vom Backend.</span></article>
+      <article><strong>DEMO Credits</strong><span>Kein monetärer Wert, keine Ein- oder Auszahlung.</span></article>
+      <article><strong>Direkt im Browser</strong><span>Keine Installation erforderlich.</span></article>
+    </section>
+
+    <footer>GMVKASINO SHOWCASE · DEMO ONLY · 18+ CONCEPT</footer>
+  </main>
+</body>
+</html>
