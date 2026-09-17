@@ -47,6 +47,10 @@ jobs:
           DATABASE_URL: postgresql://gmvkasino:gmvkasino@127.0.0.1:5432/gmvkasino_test
           LEDGER_RECONCILE_ASSET: DEMO
         run: npm run ledger:reconcile
+      - name: Reconcile sandbox payments
+        env:
+          DATABASE_URL: postgresql://gmvkasino:gmvkasino@127.0.0.1:5432/gmvkasino_test
+        run: npm run payments:reconcile
       - name: Create PostgreSQL recovery dump
         run: |
           docker run --rm --network host \

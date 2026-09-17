@@ -9,6 +9,7 @@ import { AuditLog, PostgresAuditEventStore } from './auditLog.js'
 import { OperationalMetrics } from './operationalMetrics.js'
 import { CasinoService } from './casinoService.js'
 import { SandboxPaymentService } from './sandboxPaymentService.js'
+import { PaymentReconciler } from './paymentReconciliation.js'
 import { createSandboxPaymentHttpServer } from './sandboxPaymentHttpServer.js'
 
 const { Pool } = pg
@@ -93,6 +94,9 @@ export async function createDefaultService(config = SERVER_CONFIG) {
         pool: sessionStore.pool,
         auditLog,
       })
+    : null
+  service.paymentReconciler = config.databaseUrl && sessionStore.pool
+    ? new PaymentReconciler({ pool: sessionStore.pool })
     : null
 
   return service

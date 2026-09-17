@@ -1,6 +1,7 @@
 import pg from 'pg'
 import { runMigrations } from '../server/migrations.js'
 import { LedgerReconciler } from '../server/ledgerReconciliation.js'
+import { PaymentReconciler } from '../server/paymentReconciliation.js'
 
 const { Pool } = pg
 
@@ -19,6 +20,9 @@ const TABLES = Object.freeze([
   'demo_sessions',
   'auth_sessions',
   'audit_events',
+  'game_rounds',
+  'payment_operations',
+  'payment_events',
 ])
 
 function requireUrl(value, name) {
@@ -99,6 +103,16 @@ async function main() {
       })}`)
     }
 
+    const paymentReconciliation = await new PaymentReconciler({ pool: restoredPool }).reconcile()
+    if (!paymentReconciliation.ok) {
+      throw new Error(`Restored payment reconciliation failed: ${JSON.stringify({
+        operationMismatches: paymentReconciliation.operationMismatches,
+        transactionMismatches: paymentReconciliation.transactionMismatches,
+        eventMismatches: paymentReconciliation.eventMismatches,
+        reserveMismatches: paymentReconciliation.reserveMismatches,
+      })}`)
+    }
+
     console.log(JSON.stringify({
       ok: true,
       tablesCompared: TABLES.length,
@@ -108,6 +122,11 @@ async function main() {
         accountsChecked: reconciliation.accountsChecked,
         transactionsChecked: reconciliation.transactionsChecked,
         assetsChecked: reconciliation.assetsChecked,
+      },
+      paymentReconciliation: {
+        operationsChecked: paymentReconciliation.operationsChecked,
+        paymentTransactionsChecked: paymentReconciliation.paymentTransactionsChecked,
+        mismatchCount: paymentReconciliation.summary.mismatchCount,
       },
     }))
   } finally {
