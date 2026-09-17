@@ -1,0 +1,225 @@
+name: Real-Money Production Gate
+
+on:
+  workflow_dispatch:
+    inputs:
+      security_financial_p0_status:
+        description: 'Security/financial-integrity P0 review status'
+        required: true
+        default: blocked
+        type: choice
+        options:
+          - blocked
+          - clear
+      security_financial_p0_evidence:
+        description: 'Evidence/reference for the P0 review'
+        required: true
+        type: string
+      monitoring_evidence:
+        description: 'Evidence/reference that production monitoring and alerts are verified'
+        required: true
+        type: string
+      rollback_evidence:
+        description: 'Evidence/reference for a verified rollback drill'
+        required: true
+        type: string
+      compliance_status:
+        description: 'External jurisdiction/licensing/compliance decision'
+        required: true
+        default: blocked
+        type: choice
+        options:
+          - blocked
+          - approved
+      compliance_evidence:
+        description: 'External compliance/licensing evidence or approval reference'
+        required: true
+        type: string
+      payment_domain_introduced:
+        description: 'Has the deposit/withdrawal domain been introduced?'
+        required: true
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+      deposit_idempotency_status:
+        description: 'Deposit idempotency verification when payment domain exists'
+        required: true
+        default: blocked
+        type: choice
+        options:
+          - blocked
+          - passed
+      withdrawal_idempotency_status:
+        description: 'Withdrawal idempotency verification when payment domain exists'
+        required: true
+        default: blocked
+        type: choice
+        options:
+          - blocked
+          - passed
+
+permissions:
+  contents: read
+  actions: read
+  issues: read
+
+jobs:
+  ci-proof:
+    name: Verify CI evidence for exact revision
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require main branch
+        run: |
+          if [ "${GITHUB_REF}" != "refs/heads/main" ]; then
+            echo "::error::Real-money production gate must run from main."
+            exit 1
+          fi
+      - name: Verify successful CI run for exact commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?branch=main&status=success&per_page=50" > "${RUNNER_TEMP}/ci-runs.json"
+          node --input-type=module -e '
+            import fs from "node:fs";
+            const payload = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + "/ci-runs.json", "utf8"));
+            const ok = payload.workflow_runs?.some((run) => run.head_sha === process.env.GITHUB_SHA && run.conclusion === "success");
+            if (!ok) {
+              console.error(`No successful CI run found for ${process.env.GITHUB_SHA}`);
+              process.exit(1);
+            }
+            console.log(`CI evidence verified for ${process.env.GITHUB_SHA}`);
+          '
+
+  release-blockers:
+    name: Check open production blockers
+    needs: ci-proof
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install exact dependencies
+        run: npm ci
+      - name: Fail on open production blockers
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: npm run gate:blockers
+
+  staging-e2e:
+    name: Verify deployed staging and demo money flow
+    needs: [ci-proof, release-blockers]
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - name: Checkout exact revision
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install exact dependencies
+        run: npm ci
+      - name: Validate staging target
+        env:
+          STAGING_BASE_URL: ${{ secrets.STAGING_BASE_URL }}
+          PRIMARY_BASE_URL: ${{ secrets.PRIMARY_BASE_URL }}
+        run: node scripts/validateStagingTarget.mjs
+      - name: Verify exact staging revision
+        env:
+          STAGING_BASE_URL: ${{ secrets.STAGING_BASE_URL }}
+          EXPECTED_REVISION: ${{ github.sha }}
+        run: node scripts/verify-staging-revision.mjs
+      - name: Run staging smoke
+        env:
+          SMOKE_BASE_URL: ${{ secrets.STAGING_BASE_URL }}
+        run: npm run smoke
+      - name: Run staging E2E demo money flow
+        env:
+          STAGING_BASE_URL: ${{ secrets.STAGING_BASE_URL }}
+        run: npm run staging:e2e
+
+  production-dark-smoke:
+    name: Verify promoted production revision remains demo-only
+    needs: staging-e2e
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Checkout exact revision
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install exact dependencies
+        run: npm ci
+      - name: Verify exact production revision and demo mode
+        env:
+          PRODUCTION_BASE_URL: ${{ secrets.PRODUCTION_BASE_URL }}
+          EXPECTED_REVISION: ${{ github.sha }}
+        run: npm run prod:revision:verify
+      - name: Run production smoke against promoted revision
+        env:
+          SMOKE_BASE_URL: ${{ secrets.PRODUCTION_BASE_URL }}
+        run: npm run smoke
+
+  evaluate-gate:
+    name: Evaluate real-money launch gate
+    needs: [ci-proof, release-blockers, staging-e2e, production-dark-smoke]
+    runs-on: ubuntu-latest
+    environment: real-money-production-gate
+    steps:
+      - name: Checkout exact revision
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install exact dependencies
+        run: npm ci
+      - name: Evaluate fail-closed gate
+        env:
+          GATE_CI_STATUS: passed
+          GATE_STAGING_REVISION_STATUS: passed
+          GATE_STAGING_E2E_STATUS: passed
+          GATE_PRODUCTION_REVISION_STATUS: passed
+          GATE_PRODUCTION_SMOKE_STATUS: passed
+          GATE_RELEASE_BLOCKERS_STATUS: clear
+          GATE_SECURITY_P0_STATUS: ${{ inputs.security_financial_p0_status }}
+          GATE_SECURITY_P0_EVIDENCE: ${{ inputs.security_financial_p0_evidence }}
+          GATE_MONITORING_EVIDENCE: ${{ inputs.monitoring_evidence }}
+          GATE_ROLLBACK_EVIDENCE: ${{ inputs.rollback_evidence }}
+          GATE_COMPLIANCE_STATUS: ${{ inputs.compliance_status }}
+          GATE_COMPLIANCE_EVIDENCE: ${{ inputs.compliance_evidence }}
+          GATE_PAYMENT_DOMAIN_INTRODUCED: ${{ inputs.payment_domain_introduced }}
+          GATE_DEPOSIT_IDEMPOTENCY_STATUS: ${{ inputs.deposit_idempotency_status }}
+          GATE_WITHDRAWAL_IDEMPOTENCY_STATUS: ${{ inputs.withdrawal_idempotency_status }}
+        run: npm run gate:evaluate
+      - name: Record GO decision
+        run: |
+          {
+            echo "## GMVKASINO real-money production gate"
+            echo ""
+            echo "- Revision: \`${GITHUB_SHA}\`"
+            echo "- CI evidence: passed"
+            echo "- Open production blockers: clear"
+            echo "- Staging exact revision: passed"
+            echo "- Staging E2E demo money flow: passed"
+            echo "- Production exact revision: passed"
+            echo "- Production smoke: passed"
+            echo "- Production mode before activation: demo"
+            echo "- Manual security/financial evidence: provided"
+            echo "- Monitoring evidence: provided"
+            echo "- Rollback evidence: provided"
+            echo "- External compliance/licensing gate: approved with evidence"
+            echo ""
+            echo "This workflow records a technical/external gate result. It does not itself activate real-money mode or constitute legal advice."
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "name": "gmvkasino-real-money-production-gate",
+  "defaultDecision": "BLOCK",
+  "requiredStatuses": [
+    { "id": "ci", "env": "GATE_CI_STATUS", "expected": "passed" },
+    { "id": "staging_revision", "env": "GATE_STAGING_REVISION_STATUS", "expected": "passed" },
+    { "id": "staging_e2e_money_flow", "env": "GATE_STAGING_E2E_STATUS", "expected": "passed" },
+    { "id": "production_revision", "env": "GATE_PRODUCTION_REVISION_STATUS", "expected": "passed" },
+    { "id": "production_smoke", "env": "GATE_PRODUCTION_SMOKE_STATUS", "expected": "passed" },
+    { "id": "release_blockers", "env": "GATE_RELEASE_BLOCKERS_STATUS", "expected": "clear" },
+    { "id": "security_financial_p0", "env": "GATE_SECURITY_P0_STATUS", "expected": "clear" },
+    { "id": "compliance_licensing", "env": "GATE_COMPLIANCE_STATUS", "expected": "approved" }
+  ],
+  "requiredEvidence": [
+    { "id": "security_financial_p0", "env": "GATE_SECURITY_P0_EVIDENCE", "minLength": 8 },
+    { "id": "monitoring_alerts", "env": "GATE_MONITORING_EVIDENCE", "minLength": 8 },
+    { "id": "rollback_verification", "env": "GATE_ROLLBACK_EVIDENCE", "minLength": 8 },
+    { "id": "compliance_licensing", "env": "GATE_COMPLIANCE_EVIDENCE", "minLength": 8 }
+  ],
+  "conditionalStatuses": [
+    {
+      "id": "deposit_idempotency",
+      "conditionEnv": "GATE_PAYMENT_DOMAIN_INTRODUCED",
+      "conditionValue": "true",
+      "env": "GATE_DEPOSIT_IDEMPOTENCY_STATUS",
+      "expected": "passed"
+    },
+    {
+      "id": "withdrawal_idempotency",
+      "conditionEnv": "GATE_PAYMENT_DOMAIN_INTRODUCED",
+      "conditionValue": "true",
+      "env": "GATE_WITHDRAWAL_IDEMPOTENCY_STATUS",
+      "expected": "passed"
+    }
+  ]
+}
