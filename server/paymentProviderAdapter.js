@@ -90,10 +90,17 @@ export class SandboxPaymentProviderAdapter {
 
   toTransition(payload, { actorAccountId = null, requestId = null } = {}) {
     const event = this.normalizeEvent(payload)
+    const namespacedEventId = `${event.provider}:${event.eventId}`
+    if (namespacedEventId.length > 128) {
+      throw new PaymentProviderEventError(
+        'INVALID_PROVIDER_EVENT',
+        'Namespaced provider event ID exceeds the payment event boundary',
+      )
+    }
     return Object.freeze({
       operationId: event.operationId,
       action: event.action,
-      eventId: `${event.provider}:${event.eventId}`,
+      eventId: namespacedEventId,
       actorAccountId,
       requestId,
       providerEvent: event,

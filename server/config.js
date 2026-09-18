@@ -88,6 +88,7 @@ export function loadServerConfig(env = process.env) {
     databaseSsl: booleanValue(env, 'DATABASE_SSL', false),
     databaseSslCa: multilineSecret(env.DATABASE_SSL_CA),
     metricsToken: optionalSecret(env, 'METRICS_TOKEN'),
+    sandboxPaymentWebhookSecret: optionalSecret(env, 'SANDBOX_PAYMENT_WEBHOOK_SECRET', { minLength: 32 }),
     rateLimitWindowMs: positiveNumber(env, 'SPIN_RATE_LIMIT_WINDOW_MS', 10_000, { integer: true }),
     rateLimitMaxSpins: positiveNumber(env, 'SPIN_RATE_LIMIT_MAX', 15, { integer: true }),
     maxBodyBytes: positiveNumber(env, 'MAX_JSON_BODY_BYTES', 16_384, { integer: true }),

@@ -76,3 +76,18 @@ test('provider adapter rejects unknown fields instead of trusting provider-speci
       && error.code === 'INVALID_PROVIDER_EVENT',
   )
 })
+
+
+test('provider adapter rejects namespaced event ids that exceed transition storage limits', () => {
+  const adapter = new SandboxPaymentProviderAdapter()
+  assert.throws(
+    () => adapter.toTransition({
+      provider: 'sandbox',
+      eventId: 'x'.repeat(125),
+      operationId: 'payment-op-long-event',
+      action: 'complete',
+    }),
+    (error) => error instanceof PaymentProviderEventError
+      && error.code === 'INVALID_PROVIDER_EVENT',
+  )
+})

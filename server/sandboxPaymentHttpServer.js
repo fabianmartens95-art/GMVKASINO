@@ -3,6 +3,8 @@ import { createServer } from 'node:http'
 import { requireAccountCapability } from './authorization.js'
 import { CasinoError } from './casinoService.js'
 import { createOperationsHttpServer } from './operationsHttpServer.js'
+import { SandboxPaymentProviderAdapter } from './paymentProviderAdapter.js'
+import { verifyPaymentWebhookEnvelope } from './paymentWebhookVerifier.js'
 
 function setSecurityHeaders(res) {
   res.setHeader('X-Content-Type-Options', 'nosniff')
@@ -36,7 +38,7 @@ function bearerToken(req) {
   return value.slice('Bearer '.length).trim()
 }
 
-async function readJson(req, maxBodyBytes) {
+async function readRawBody(req, maxBodyBytes) {
   const chunks = []
   let size = 0
   for await (const chunk of req) {
@@ -44,17 +46,33 @@ async function readJson(req, maxBodyBytes) {
     if (size > maxBodyBytes) throw new CasinoError(413, 'BODY_TOO_LARGE', 'Request body is too large')
     chunks.push(chunk)
   }
-  if (chunks.length === 0) return {}
+  return Buffer.concat(chunks)
+}
+
+async function readJson(req, maxBodyBytes) {
+  const rawBody = await readRawBody(req, maxBodyBytes)
+  if (rawBody.length === 0) return {}
   try {
-    return JSON.parse(Buffer.concat(chunks).toString('utf8'))
+    return JSON.parse(rawBody.toString('utf8'))
   } catch {
     throw new CasinoError(400, 'INVALID_JSON', 'Request body must contain valid JSON')
   }
 }
 
+function headerValue(req, name) {
+  const raw = req.headers[name]
+  return Array.isArray(raw) ? raw[0] : raw
+}
+
 function paymentRoute(req) {
   const url = new URL(req.url || '/', 'http://localhost')
   const pathname = url.pathname
+  if (
+    pathname === '/api/v1/sandbox/providers/sandbox/webhook'
+    || pathname === '/api/sandbox/providers/sandbox/webhook'
+  ) {
+    return { type: 'provider-webhook' }
+  }
   if (pathname === '/api/v1/sandbox/payments/queue' || pathname === '/api/sandbox/payments/queue') {
     return { type: 'queue' }
   }
@@ -109,6 +127,7 @@ export function createSandboxPaymentHttpServer({
   })
   const baseListener = baseServer.listeners('request')[0]
   baseServer.removeAllListeners('request')
+  const sandboxProviderAdapter = new SandboxPaymentProviderAdapter({ provider: 'sandbox' })
 
   return createServer(async (req, res) => {
     const route = paymentRoute(req)
@@ -116,9 +135,11 @@ export function createSandboxPaymentHttpServer({
 
     const startedAt = Date.now()
     const requestId = requestIdFrom(req)
-    const metricRoute = route.type === 'transition'
-      ? '/api/v1/sandbox/payments/:id/transition'
-      : route.type === 'create'
+    const metricRoute = route.type === 'provider-webhook'
+      ? '/api/v1/sandbox/providers/sandbox/webhook'
+      : route.type === 'transition'
+        ? '/api/v1/sandbox/payments/:id/transition'
+        : route.type === 'create'
         ? `/api/v1/sandbox/payments/${route.kind === 'deposit' ? 'deposits' : 'withdrawals'}`
         : route.type === 'queue'
           ? '/api/v1/sandbox/payments/queue'
@@ -144,8 +165,56 @@ export function createSandboxPaymentHttpServer({
     })
 
     try {
+      if (route.type === 'provider-webhook' && !config.sandboxPaymentWebhookSecret) {
+        sendJson(res, 404, {
+          error: { code: 'API_NOT_FOUND', message: 'API route not found', requestId },
+        })
+        return
+      }
+
       if (!paymentService) {
         throw new CasinoError(503, 'SANDBOX_PAYMENTS_UNAVAILABLE', 'Sandbox payments require PostgreSQL mode')
+      }
+
+      if (route.type === 'provider-webhook' && req.method === 'POST') {
+        const rawBody = await readRawBody(req, config.maxBodyBytes)
+        verifyPaymentWebhookEnvelope({
+          secret: config.sandboxPaymentWebhookSecret,
+          timestamp: headerValue(req, 'x-provider-timestamp'),
+          signature: headerValue(req, 'x-provider-signature'),
+          rawBody,
+        })
+
+        let payload
+        try {
+          payload = JSON.parse(rawBody.toString('utf8'))
+        } catch {
+          throw new CasinoError(400, 'INVALID_JSON', 'Request body must contain valid JSON')
+        }
+
+        const transition = sandboxProviderAdapter.toTransition(payload, {
+          actorAccountId: null,
+          requestId,
+        })
+        const operation = await paymentService.transition(transition)
+        auditLog?.record?.('sandbox_payment.provider_webhook_accepted', {
+          requestId,
+          provider: transition.providerEvent.provider,
+          paymentOperationId: transition.operationId,
+          providerEventRef: transition.eventId,
+        })
+        sendJson(res, 200, {
+          sandbox: true,
+          mode: 'demo',
+          accepted: true,
+          operation: {
+            id: operation.id,
+            status: operation.status,
+            replayed: Boolean(operation.replayed),
+          },
+          requestId,
+        })
+        return
       }
 
       if (route.type === 'queue' && req.method === 'GET') {
