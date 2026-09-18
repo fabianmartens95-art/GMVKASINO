@@ -112,15 +112,19 @@ A game is not considered playable/production-ready until all applicable checks p
 
 ## Parallelism policy
 
-The Game Core may contain multiple game branches in flight, but the repository-wide limit of 3-5 actively changing implementation streams still applies.
+The repository-wide guideline of 3-5 active implementation streams applies to top-level platform/core workstreams. It does **not** cap isolated per-game development branches.
+
+Individual games may therefore be developed in additional parallel branches when their ownership is isolated and they consume the stable shared Game Platform contract. The practical concurrency limit is CI/review capacity and conflict risk, not the 3-5 platform-stream guideline.
 
 Within Game Core:
 
-1. Shared Game Platform changes are serialized.
-2. After the platform contract is green, independent game branches may proceed in parallel.
-3. Two game branches should not edit the same shared module.
-4. If a game requires a shared contract extension, that extension is extracted into a foundation PR first.
-5. Games consume wallet/ledger/settlement through the existing authoritative platform only.
+1. Shared Game Platform/core changes are serialized.
+2. Independent per-game branches do not count against the 3-5 top-level platform/core stream guideline.
+3. Multiple independent games may be implemented concurrently after the shared contract is green.
+4. Game branches must not edit the same shared core modules concurrently.
+5. If a game requires a shared contract extension, that extension is extracted into a separate `stream/game-platform-*` foundation PR first.
+6. Games consume wallet/ledger/settlement through the existing authoritative platform only.
+7. A game branch stops being an isolated game stream and becomes a shared-core change the moment it modifies common settlement, registry contract, wallet, ledger, auth, payments or other platform primitives.
 
 ## Initial game queue
 

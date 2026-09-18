@@ -24,7 +24,7 @@ Every implementation stream follows:
 
 ### Operating rules
 
-- Keep at most 3-5 implementation streams actively changing code at the same time, even though seven workstreams exist.
+- Keep at most 3-5 top-level platform/core implementation streams actively changing shared product code at the same time, even though seven workstreams exist. Isolated per-game branches governed by `docs/MULTI_GAME_PARALLEL_STANDARD.md` are additional substreams and do not count against this guideline.
 - Prefer independent files/modules/contracts so active streams do not compete for the same shared core.
 - Shared-core changes are serialized: merge the foundation change first, then update/rebase dependent streams.
 - Every task must have explicit scope, acceptance criteria, dependencies, owned files/contracts and a clear done condition.
@@ -42,7 +42,7 @@ A stream is not considered complete merely because the UI works or a happy-path 
 
 ### Scheduling rule
 
-Seven workstreams may remain open, but only 3-5 should normally be in active implementation simultaneously. Blocked or review-only streams do not consume an implementation slot.
+Seven top-level platform/core workstreams may remain open, but only 3-5 should normally be in active implementation simultaneously. Blocked or review-only platform/core streams do not consume an implementation slot. Independent per-game branches are governed separately by the Multi-Game Parallel Development Standard and do not consume these top-level slots.
 
 When a stream is blocked on a shared primitive, it should either:
 1. switch to contract-safe frontend/test/documentation work, or
@@ -175,7 +175,7 @@ These belong to the DevOps stream and remain cross-stream launch dependencies.
 
 ## Parallel-work rule
 
-The system may have many branches and PRs in flight at once, but only one authoritative implementation for each shared primitive. If two streams need the same primitive, they extend the shared contract once and both consume it.
+The system may have many branches and PRs in flight at once, including multiple isolated game branches, but only one authoritative implementation for each shared primitive. If two streams need the same primitive, they extend the shared contract once and both consume it.
 
 Do not create:
 - a second authentication/session model
