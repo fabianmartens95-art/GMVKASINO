@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { spinDemo } from '../api/casinoApi.js'
 import { getGameById } from '../config/games.js'
-import { createGrid } from '../game/slotEngine.js'
+import { createGamePreviewGrid, getGamePresentation } from '../game/clientGamePresentation.js'
 
 function Symbol({ symbol, spinning }) {
   return (
@@ -14,7 +14,8 @@ function Symbol({ symbol, spinning }) {
 export default function SlotMachine({ gameId, balance, setBalance, onBack, serverState, setServerState }) {
   const game = getGameById(gameId)
   const bets = game.allowedBets?.length ? game.allowedBets : [1, 2, 5, 10, 25]
-  const initialGrid = useMemo(() => createGrid(), [])
+  const presentation = getGamePresentation(gameId)
+  const initialGrid = useMemo(() => createGamePreviewGrid(gameId), [gameId])
   const [grid, setGrid] = useState(initialGrid)
   const [betIndex, setBetIndex] = useState(Math.min(2, bets.length - 1))
   const [lastWin, setLastWin] = useState(0)
@@ -76,7 +77,7 @@ export default function SlotMachine({ gameId, balance, setBalance, onBack, serve
         <div className="provably-demo">SERVER RNG · DEMO</div>
       </div>
 
-      <section className="slot-cabinet">
+      <section className={`slot-cabinet game-theme-${presentation.theme}`}>
         <div className="cabinet-top">
           <span className="cabinet-star">★</span>
           <div><small>THE ORIGINAL</small><strong>{game.title.toUpperCase()}</strong></div>
@@ -123,7 +124,7 @@ export default function SlotMachine({ gameId, balance, setBalance, onBack, serve
       <section className="game-info-panel">
         <div><strong>Server-owned balance</strong><span>Browser cannot credit itself</span></div>
         <div><strong>{game.paylines} paylines</strong><span>Three identical symbols win</span></div>
-        <div><strong>Demo session</strong><span>Session token stays on this device</span></div>
+        <div><strong>{presentation.subtitle}</strong><span>Outcome resolved by the server</span></div>
       </section>
     </main>
   )
