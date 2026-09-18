@@ -39,6 +39,14 @@ function sendJson(res, status, payload) {
   res.end(JSON.stringify(payload))
 }
 
+function decodePathSegment(value) {
+  try {
+    return decodeURIComponent(value)
+  } catch {
+    return ''
+  }
+}
+
 function operationsRoute(req) {
   if (req.method !== 'GET') return null
   const url = new URL(req.url || '/', 'http://localhost')
@@ -60,7 +68,7 @@ function operationsRoute(req) {
       type: 'player-sessions',
       metricRoute: '/api/v1/ops/players/:id/sessions',
       url,
-      accountId: decodeURIComponent(sessionMatch[1]),
+      accountId: decodePathSegment(sessionMatch[1]),
     }
   }
   return null
