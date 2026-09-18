@@ -262,6 +262,12 @@ export async function spinDemo({ gameId, bet }) {
   }
 }
 
+export async function listDemoSpinHistory({ limit = 50 } = {}) {
+  const safeLimit = Number.isInteger(limit) ? Math.max(1, Math.min(100, limit)) : 50
+  const payload = await request(`/history/spins?limit=${safeLimit}`, { includeSession: false })
+  return payload.rounds || []
+}
+
 export async function listSandboxPayments() {
   const payload = await request('/sandbox/payments', { includeSession: false })
   return payload.operations || []

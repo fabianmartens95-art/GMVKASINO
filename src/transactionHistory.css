@@ -149,3 +149,28 @@
   .history-row { grid-template-columns: 1fr; }
   .history-state, .history-amount { text-align: left; }
 }
+
+
+.history-section-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: baseline;
+  margin: 30px 0 12px;
+}
+
+.history-section-heading h2 {
+  margin: 0;
+}
+
+.history-section-heading span {
+  color: #9da3b1;
+  font-size: 12px;
+}
+
+@media (max-width: 720px) {
+  .history-section-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
