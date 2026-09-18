@@ -6,6 +6,7 @@ import { CasinoError } from './casinoService.js'
 import { createHttpServer } from './httpServer.js'
 import { PlayerDirectory } from './playerDirectory.js'
 import { OperationalEvidenceReader } from './operationalEvidence.js'
+import { AuthSessionDirectory, opaqueAccountRef } from './authSessionDirectory.js'
 
 function setSecurityHeaders(res) {
   res.setHeader('X-Content-Type-Options', 'nosniff')
@@ -38,6 +39,14 @@ function sendJson(res, status, payload) {
   res.end(JSON.stringify(payload))
 }
 
+function decodePathSegment(value) {
+  try {
+    return decodeURIComponent(value)
+  } catch {
+    return ''
+  }
+}
+
 function operationsRoute(req) {
   if (req.method !== 'GET') return null
   const url = new URL(req.url || '/', 'http://localhost')
@@ -52,6 +61,15 @@ function operationsRoute(req) {
   }
   if (url.pathname === '/api/v1/ops/reconciliation' || url.pathname === '/api/ops/reconciliation') {
     return { type: 'reconciliation', metricRoute: '/api/v1/ops/reconciliation', url }
+  }
+  const sessionMatch = url.pathname.match(/^\/api(?:\/v1)?\/ops\/players\/([^/]+)\/sessions$/)
+  if (sessionMatch) {
+    return {
+      type: 'player-sessions',
+      metricRoute: '/api/v1/ops/players/:id/sessions',
+      url,
+      accountId: decodePathSegment(sessionMatch[1]),
+    }
   }
   return null
 }
@@ -74,6 +92,7 @@ export function createOperationsHttpServer({
   paymentReconciler = service?.paymentReconciler,
   playerDirectory = service?.playerDirectory,
   operationalEvidence = service?.operationalEvidence,
+  authSessionDirectory = service?.authSessionDirectory,
   log = console.log,
   ...baseOptions
 } = {}) {
@@ -94,6 +113,12 @@ export function createOperationsHttpServer({
   const directory = playerDirectory || (authService?.pool ? new PlayerDirectory({ pool: authService.pool }) : null)
   const evidence = operationalEvidence || (authService?.pool
     ? new OperationalEvidenceReader({ pool: authService.pool, paymentReconciler })
+    : null)
+  const sessions = authSessionDirectory || (authService?.pool
+    ? new AuthSessionDirectory({
+        pool: authService.pool,
+        idleTtlMs: config.authSessionIdleTtlMs || 86_400_000,
+      })
     : null)
 
   return createServer(async (req, res) => {
@@ -134,6 +159,27 @@ export function createOperationsHttpServer({
       const profile = await authService.profile(token)
       if (!profile) {
         throw new CasinoError(401, 'AUTH_SESSION_REQUIRED', 'Authentication session is missing or expired')
+      }
+
+      if (route.type === 'player-sessions') {
+        requireAccountCapability(profile.account, 'session.read', { auditLog, requestId })
+        if (!sessions) throw new CasinoError(503, 'SESSION_DIRECTORY_UNAVAILABLE', 'Session directory requires PostgreSQL mode')
+        const items = await sessions.list({
+          accountId: route.accountId,
+          limit: route.url.searchParams.get('limit'),
+        })
+        auditLog?.record?.('operations.player_sessions_read', {
+          requestId,
+          accountId: profile.account.id,
+          targetAccountRef: opaqueAccountRef(route.accountId),
+          resultCount: items.length,
+        })
+        sendJson(res, 200, {
+          readOnly: true,
+          sessions: items,
+          requestId,
+        })
+        return
       }
 
       if (route.type === 'audit') {

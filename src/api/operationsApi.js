@@ -44,6 +44,15 @@ export async function getOperationsOverview() {
   return requestOverview()
 }
 
+export async function getPlayerAuthSessions(accountId, { limit = 25 } = {}) {
+  if (typeof accountId !== 'string' || !accountId.trim()) throw new Error('Account ID is required')
+  const safeLimit = Number.isInteger(limit) ? Math.max(1, Math.min(100, limit)) : 25
+  const payload = await requestStaff(
+    `/ops/players/${encodeURIComponent(accountId.trim())}/sessions?limit=${safeLimit}`,
+  )
+  return payload.sessions || []
+}
+
 export async function getAuditEvidence({ limit = 50 } = {}) {
   const safeLimit = Number.isInteger(limit) ? Math.max(1, Math.min(100, limit)) : 50
   const payload = await requestStaff(`/ops/audit?limit=${safeLimit}`)
