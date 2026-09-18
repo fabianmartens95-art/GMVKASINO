@@ -38,7 +38,9 @@ The workflow:
 5. rejects the same normalized origin as `PRIMARY_BASE_URL` when configured,
 6. calls staging liveness and requires `revision === GITHUB_SHA`,
 7. runs the existing remote `npm run smoke` against staging,
-8. records the tested commit SHA, exact-revision match and result in the GitHub Actions step summary.
+8. runs `npm run staging:e2e` against the same exact deployed revision,
+9. verifies retry idempotency, concurrent duplicate settlement protection and authoritative wallet consistency using synthetic DEMO sessions only,
+10. records the tested commit SHA, exact-revision match, smoke result and DEMO money-flow result in the GitHub Actions step summary.
 
 The workflow performs verification only. It does not deploy or promote automatically.
 
@@ -51,6 +53,7 @@ A revision is eligible for promotion only when:
 - the staging environment is known to use isolated persistence,
 - the deployed health revision exactly matches the revision being promoted,
 - Staging Verification passes for that exact revision,
+- the synthetic DEMO money/game-flow gate passes for that revision,
 - there is no unresolved P0 operational blocker,
 - any migration-specific backup/recovery requirements are satisfied.
 
@@ -92,3 +95,17 @@ A staging-verification run should preserve only non-secret operational evidence:
 - pass/fail outcome.
 
 Do not record database URLs, session bearer tokens, player names, `METRICS_TOKEN` or other credentials in workflow summaries/issues.
+
+
+## DEMO money-flow evidence
+
+The staging workflow executes the existing `staging:e2e` harness only after the deployed revision has been proven equal to the workflow revision and the normal remote smoke has passed.
+
+The harness uses synthetic guest DEMO sessions and verifies:
+
+- one retry with the same idempotency key returns the identical authoritative round result,
+- two concurrent duplicate requests settle exactly once and return the same round result,
+- the final server-authoritative wallet equals the settled round response,
+- the synthetic session is invalidated during cleanup.
+
+This is Gate-B-style engineering evidence for the DEMO transaction loop. It does not test deposits, withdrawals, real money, crypto, KYC, licensing or jurisdictional readiness and it does not satisfy Gate C by itself.
