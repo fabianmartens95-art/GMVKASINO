@@ -112,8 +112,34 @@ export async function certifyGameCatalog({ games, registry, samples = 100 } = {}
   }
 
   const results = []
+  const catalogIds = new Set()
   for (const game of games) {
+    if (catalogIds.has(game?.id)) {
+      results.push({
+        gameId: game?.id || '<missing>',
+        status: game?.status || null,
+        ok: false,
+        samples: 0,
+        requestedSamples: samples,
+        failures: [failure('DUPLICATE_CATALOG_ID', 'Game catalog ids must be unique')],
+      })
+      continue
+    }
+    if (game?.id) catalogIds.add(game.id)
     results.push(await certifyGame({ game, registry, samples }))
+  }
+
+  const adapterIds = registry.adapters instanceof Map ? [...registry.adapters.keys()] : []
+  for (const adapterId of adapterIds) {
+    if (catalogIds.has(adapterId)) continue
+    results.push({
+      gameId: adapterId,
+      status: null,
+      ok: false,
+      samples: 0,
+      requestedSamples: samples,
+      failures: [failure('ADAPTER_NOT_IN_CATALOG', 'Registered adapter is missing from the game catalog')],
+    })
   }
 
   return {
