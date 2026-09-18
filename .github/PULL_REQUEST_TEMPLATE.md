@@ -4,6 +4,7 @@ Lane: <!-- identity | ledger | game | player | ops | payments | devops | integra
 Priority: <!-- P0 | P1 | P2 -->
 Depends on: <!-- PR/issue numbers or none -->
 Auto merge: <!-- yes/no; yes only for isolated, reversible work after CI -->
+Integration wave: <!-- yes/no; yes routes this PR to Integration Wave V2 instead of V1 queue -->
 Production gate: <!-- yes/no -->
 Founder decision: <!-- yes/no -->
 

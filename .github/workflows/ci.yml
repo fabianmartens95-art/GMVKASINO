@@ -34,6 +34,8 @@ jobs:
           cache: npm
       - name: Validate integration queue policy
         run: node --check scripts/ci/integration-queue.mjs
+      - name: Validate Integration Wave V2 policy
+        run: node --check scripts/ci/integration-wave-v2.mjs
       - name: Install dependencies
         run: npm ci
       - name: Security audit

@@ -65,6 +65,7 @@ function isExplicitlyQueueEligible(pull) {
   if (!allowedAssociations.has(pull.author_association)) return false;
   if ([...labels].some((label) => blockingLabels.has(label))) return false;
   if (field(body, "Auto merge").toLowerCase() !== "yes") return false;
+  if (field(body, "Integration wave").toLowerCase() === "yes") return false;
   if (field(body, "Production gate").toLowerCase() !== "no") return false;
   if (field(body, "Founder decision").toLowerCase() !== "no") return false;
 
