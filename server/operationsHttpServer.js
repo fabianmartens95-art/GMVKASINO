@@ -5,6 +5,7 @@ import { accessContext } from './accessControl.js'
 import { CasinoError } from './casinoService.js'
 import { createHttpServer } from './httpServer.js'
 import { PlayerDirectory } from './playerDirectory.js'
+import { OperationalEvidenceReader } from './operationalEvidence.js'
 
 function setSecurityHeaders(res) {
   res.setHeader('X-Content-Type-Options', 'nosniff')
@@ -46,6 +47,12 @@ function operationsRoute(req) {
   if (url.pathname === '/api/v1/ops/players' || url.pathname === '/api/ops/players') {
     return { type: 'players', metricRoute: '/api/v1/ops/players', url }
   }
+  if (url.pathname === '/api/v1/ops/audit' || url.pathname === '/api/ops/audit') {
+    return { type: 'audit', metricRoute: '/api/v1/ops/audit', url }
+  }
+  if (url.pathname === '/api/v1/ops/reconciliation' || url.pathname === '/api/ops/reconciliation') {
+    return { type: 'reconciliation', metricRoute: '/api/v1/ops/reconciliation', url }
+  }
   return null
 }
 
@@ -66,6 +73,7 @@ export function createOperationsHttpServer({
   auditLog = service?.auditLog,
   paymentReconciler = service?.paymentReconciler,
   playerDirectory = service?.playerDirectory,
+  operationalEvidence = service?.operationalEvidence,
   log = console.log,
   ...baseOptions
 } = {}) {
@@ -84,6 +92,9 @@ export function createOperationsHttpServer({
   const baseListener = baseServer.listeners('request')[0]
   baseServer.removeAllListeners('request')
   const directory = playerDirectory || (authService?.pool ? new PlayerDirectory({ pool: authService.pool }) : null)
+  const evidence = operationalEvidence || (authService?.pool
+    ? new OperationalEvidenceReader({ pool: authService.pool, paymentReconciler })
+    : null)
 
   return createServer(async (req, res) => {
     const route = operationsRoute(req)
@@ -123,6 +134,33 @@ export function createOperationsHttpServer({
       const profile = await authService.profile(token)
       if (!profile) {
         throw new CasinoError(401, 'AUTH_SESSION_REQUIRED', 'Authentication session is missing or expired')
+      }
+
+      if (route.type === 'audit') {
+        requireAccountCapability(profile.account, 'audit.read', { auditLog, requestId })
+        if (!evidence) throw new CasinoError(503, 'OPS_EVIDENCE_UNAVAILABLE', 'Operational evidence requires PostgreSQL mode')
+        const events = await evidence.recentAudit({ limit: route.url.searchParams.get('limit') })
+        auditLog?.record?.('operations.audit_read', {
+          requestId,
+          accountId: profile.account.id,
+          resultCount: events.length,
+        })
+        sendJson(res, 200, { readOnly: true, events, requestId })
+        return
+      }
+
+      if (route.type === 'reconciliation') {
+        requireAccountCapability(profile.account, 'reconciliation.read', { auditLog, requestId })
+        if (!evidence) throw new CasinoError(503, 'OPS_EVIDENCE_UNAVAILABLE', 'Operational evidence requires PostgreSQL mode')
+        const reconciliation = await evidence.reconciliationSummary()
+        auditLog?.record?.('operations.reconciliation_read', {
+          requestId,
+          accountId: profile.account.id,
+          ledgerOk: reconciliation.ledger?.ok ?? null,
+          paymentOk: reconciliation.payments?.ok ?? null,
+        })
+        sendJson(res, 200, { readOnly: true, reconciliation, requestId })
+        return
       }
 
       if (route.type === 'players') {
