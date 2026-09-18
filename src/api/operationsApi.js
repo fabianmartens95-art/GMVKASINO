@@ -44,6 +44,17 @@ export async function getOperationsOverview() {
   return requestOverview()
 }
 
+export async function getAuditEvidence({ limit = 50 } = {}) {
+  const safeLimit = Number.isInteger(limit) ? Math.max(1, Math.min(100, limit)) : 50
+  const payload = await requestStaff(`/ops/audit?limit=${safeLimit}`)
+  return payload.events || []
+}
+
+export async function getReconciliationEvidence() {
+  const payload = await requestStaff('/ops/reconciliation')
+  return payload.reconciliation || null
+}
+
 export async function getSandboxPaymentQueue() {
   const payload = await requestStaff('/sandbox/payments/queue')
   return payload.operations || []
