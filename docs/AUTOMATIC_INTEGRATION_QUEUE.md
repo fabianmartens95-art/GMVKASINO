@@ -44,6 +44,6 @@ Real-money/crypto activation remains outside this queue and continues to require
 
 The queue never checks out PR-head code and never executes code supplied by a pull request. It runs the trusted queue policy from `main` and reads GitHub metadata/check results.
 
-## Next step
+## Integration Wave V2
 
-After V1 is stable, compatible independent streams can move to an Integration Wave V2 that creates a temporary combined revision and runs cross-stream E2E before promotion.
+Integration Wave V2 is active alongside this queue. PRs with `Integration wave: yes` are excluded from V1 and routed to the combined-revision workflow documented in `docs/INTEGRATION_WAVE_V2.md`. V1 remains the path for single isolated reversible PRs.
