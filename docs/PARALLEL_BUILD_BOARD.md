@@ -235,3 +235,18 @@ Third autonomous parallel wave and concurrent Game Core substreams:
 All merged feature streams passed isolated PR CI before integration. This integration record PR runs the complete test/reconciliation/recovery/build/smoke pipeline against the combined current `main`.
 
 Diamond Rush and Lucky 777 remain `coming-soon` and DEMO-only. Account recovery still has no public reset endpoint. Webhook verification authenticates raw provider input only and does not mutate payment or ledger state. Real-money/crypto activation remains blocked by Gate C.
+
+
+## Integration record — Wave 4 (2026-09-18)
+
+Fourth autonomous parallel wave:
+
+- #121 atomic recovery password-reset transaction core
+- #122 server-authoritative player spin history
+- #123 capability-protected audit/reconciliation evidence center
+- #124 automated DEMO game certification harness
+- #125 staging DEMO money/game-flow promotion evidence
+
+All feature streams passed isolated PR CI before merge. This integration record PR runs the complete CI/reconciliation/recovery/build/smoke pipeline against the combined current `main`.
+
+Recovery still has no public reset endpoint or mail-delivery claim. Staff MFA is not yet enforced from the enrollment flag alone; session-level assurance/challenge remains required before that gate can be activated safely. Game certification never changes catalog status automatically. Staging verification remains manual and performs no promotion. Real-money/crypto activation remains blocked by Gate C.
