@@ -21,6 +21,13 @@ test('default registry resolves Golden Vault through the shared adapter contract
   assert.equal(Array.isArray(result.wins), true)
 })
 
+test('default registry contains all certified game adapters behind one shared contract', () => {
+  const registry = createDefaultGameRegistry()
+  for (const gameId of ['golden-vault', 'neon-fruits', 'diamond-rush', 'lucky-777']) {
+    assert.equal(registry.has(gameId), true)
+  }
+})
+
 test('normalized game results cannot override server-authoritative round fields', () => {
   const result = normalizeGameResult({
     totalWin: 12.34,
