@@ -174,3 +174,33 @@ footer { display: flex; justify-content: space-between; gap: 20px; padding: 24px
   .game-info-panel { grid-template-columns: 1fr; }
   footer { flex-direction: column; }
 }
+
+
+/* Multi-game presentation themes. Visual only; outcomes remain server-authoritative. */
+.game-card-neon .game-art { background: radial-gradient(circle, #6b174f, #25102f 52%, #101014 100%); }
+.game-card-diamond .game-art { background: radial-gradient(circle, #284e6f, #162635 52%, #0d1015 100%); }
+.game-card-lucky .game-art { background: radial-gradient(circle, #7b261f, #351610 52%, #121014 100%); }
+
+.game-theme-neon {
+  border-color: #9b3f82;
+  background: linear-gradient(135deg, #4b153f, #17100f 30%, #25102f 58%, #521b46);
+  box-shadow: inset 0 0 0 3px #c857a4, inset 0 0 40px rgba(255, 82, 205, .08), 0 45px 85px rgba(0,0,0,.48);
+}
+.game-theme-neon .cabinet-top { color: #ff85d6; }
+.game-theme-neon .spin-button { border-color: #8e2c70; background: radial-gradient(circle at 35% 28%, #ff79d2, #c22e8c 45%, #681957 75%); }
+
+.game-theme-diamond {
+  border-color: #48779b;
+  background: linear-gradient(135deg, #29485f, #10151a 30%, #182c3c 58%, #315b78);
+  box-shadow: inset 0 0 0 3px #77a8c8, inset 0 0 40px rgba(117, 196, 255, .08), 0 45px 85px rgba(0,0,0,.48);
+}
+.game-theme-diamond .cabinet-top { color: #9ed7ff; }
+.game-theme-diamond .spin-button { border-color: #315f7c; background: radial-gradient(circle at 35% 28%, #8edcff, #3e8ebd 45%, #214c69 75%); }
+
+.game-theme-lucky {
+  border-color: #8f382c;
+  background: linear-gradient(135deg, #5a211a, #17100b 30%, #311611 58%, #67291f);
+  box-shadow: inset 0 0 0 3px #c86b4e, inset 0 0 40px rgba(255, 105, 72, .08), 0 45px 85px rgba(0,0,0,.48);
+}
+.game-theme-lucky .cabinet-top { color: #ff9c72; }
+.game-theme-lucky .spin-button { border-color: #8b3528; background: radial-gradient(circle at 35% 28%, #ff936b, #d34836 45%, #7a211e 75%); }
