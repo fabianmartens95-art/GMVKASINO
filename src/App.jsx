@@ -7,11 +7,18 @@ import OperationsConsole from './components/OperationsConsole.jsx'
 import Cashier from './components/Cashier.jsx'
 import AccountPanel from './components/AccountPanel.jsx'
 import TransactionHistory from './components/TransactionHistory.jsx'
+import GameDetails from './components/GameDetails.jsx'
 import { openDemoSession, syncDemoPlayer } from './api/casinoApi.js'
 import { usePersistentState } from './hooks/usePersistentState.js'
 import { getGameById } from './config/games.js'
 
 const STARTING_BALANCE = 1000
+function detailsGameIdFromHash() {
+  const match = window.location.hash.match(/^#details\/([a-z0-9-]+)$/)
+  if (!match) return null
+  return getGameById(match[1])?.id || null
+}
+
 function gameIdFromHash() {
   const match = window.location.hash.match(/^#game\/([a-z0-9-]+)$/)
   if (!match) return null
@@ -24,12 +31,13 @@ function routeFromHash() {
   if (window.location.hash === '#cashier') return 'cashier'
   if (window.location.hash === '#account') return 'account'
   if (window.location.hash === '#history') return 'history'
+  if (detailsGameIdFromHash()) return 'details'
   return gameIdFromHash() ? 'slot' : 'lobby'
 }
 
 export default function App() {
   const [view, setView] = useState(routeFromHash)
-  const [selectedGameId, setSelectedGameId] = useState(gameIdFromHash)
+  const [selectedGameId, setSelectedGameId] = useState(() => gameIdFromHash() || detailsGameIdFromHash())
   const [balance, setBalance] = useState(STARTING_BALANCE)
   const [player, setPlayer] = usePersistentState('gmvkasino.demo.player', '')
   const [loginOpen, setLoginOpen] = useState(false)
@@ -37,7 +45,7 @@ export default function App() {
 
   useEffect(() => {
     const onHashChange = () => {
-      setSelectedGameId(gameIdFromHash())
+      setSelectedGameId(gameIdFromHash() || detailsGameIdFromHash())
       setView(routeFromHash())
     }
     window.addEventListener('hashchange', onHashChange)
@@ -45,7 +53,7 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    if (['ops', 'cashier', 'account', 'history'].includes(view)) return undefined
+    if (['ops', 'cashier', 'account', 'history', 'details'].includes(view)) return undefined
 
     let active = true
     setServerState('connecting')
@@ -71,7 +79,12 @@ export default function App() {
     else if (nextView === 'cashier') window.location.hash = 'cashier'
     else if (nextView === 'account') window.location.hash = 'account'
     else if (nextView === 'history') window.location.hash = 'history'
-    else if (nextView === 'slot' && gameId) {
+    else if (nextView === 'details' && gameId) {
+      const game = getGameById(gameId)
+      if (!game) return
+      setSelectedGameId(game.id)
+      window.location.hash = `details/${game.id}`
+    } else if (nextView === 'slot' && gameId) {
       const game = getGameById(gameId)
       if (game?.status !== 'playable') return
       setSelectedGameId(game.id)
@@ -113,6 +126,17 @@ export default function App() {
     )
   }
 
+  if (view === 'details' && selectedGameId) {
+    const game = getGameById(selectedGameId)
+    return game ? (
+      <GameDetails
+        game={game}
+        onBack={() => navigate('lobby')}
+        onPlay={(gameId) => navigate('slot', gameId)}
+      />
+    ) : null
+  }
+
   if (view === 'account') {
     return (
       <AccountPanel
@@ -136,7 +160,10 @@ export default function App() {
       />
 
       {view === 'lobby' ? (
-        <CasinoLobby onPlay={(gameId) => navigate('slot', gameId)} />
+        <CasinoLobby
+          onPlay={(gameId) => navigate('slot', gameId)}
+          onDetails={(gameId) => navigate('details', gameId)}
+        />
       ) : selectedGameId ? (
         <SlotMachine
           key={selectedGameId}
@@ -148,7 +175,10 @@ export default function App() {
           setServerState={setServerState}
         />
       ) : (
-        <CasinoLobby onPlay={(gameId) => navigate('slot', gameId)} />
+        <CasinoLobby
+          onPlay={(gameId) => navigate('slot', gameId)}
+          onDetails={(gameId) => navigate('details', gameId)}
+        />
       )}
 
       <footer>
