@@ -28,6 +28,13 @@ function fixture() {
   const authService = {
     profile: async (token) => profiles[token] || null,
   }
+  const playerDirectory = {
+    async search({ query, limit }) {
+      return query === 'Play'
+        ? [{ id: 'player-1', displayName: 'Player One', status: 'active', createdAt: 1_000 }]
+        : []
+    },
+  }
   const paymentReconciler = {
     sanitizedSummary: async () => ({
       ok: true,
@@ -63,7 +70,7 @@ function fixture() {
     metricsToken: '',
   }
 
-  return { service, authService, paymentReconciler, metrics, auditEvents, config }
+  return { service, authService, paymentReconciler, playerDirectory, metrics, auditEvents, config }
 }
 
 test('operations.read is limited to staff roles', () => {
@@ -156,6 +163,59 @@ test('authorized operations overview is read-only, sanitized, payment-aware and 
     assert.equal(audit.data.accountId, 'support-1')
     assert.equal(audit.data.paymentReconciliationOk, true)
     assert.equal(audit.data.paymentMismatchCount, 0)
+  } finally {
+    await close(server)
+  }
+})
+
+
+test('player directory lookup requires player.read and returns sanitized account summaries', async () => {
+  const { service, authService, playerDirectory, config, auditEvents } = fixture()
+  const server = createOperationsHttpServer({
+    service,
+    authService,
+    playerDirectory,
+    config,
+    staticDir: '/tmp/gmvkasino-no-static',
+    log: () => {},
+  })
+  const baseUrl = await listen(server)
+
+  try {
+    const denied = await fetch(`${baseUrl}/api/v1/ops/players?q=Play`, {
+      headers: { Authorization: 'Bearer player-token' },
+    })
+    assert.equal(denied.status, 403)
+    assert.equal((await denied.json()).error.details.capability, 'player.read')
+
+    const allowed = await fetch(`${baseUrl}/api/v1/ops/players?q=Play&limit=10`, {
+      headers: {
+        Authorization: 'Bearer support-token',
+        'X-Request-Id': 'player-lookup-request-01',
+      },
+    })
+    assert.equal(allowed.status, 200)
+    const payload = await allowed.json()
+    assert.equal(payload.readOnly, true)
+    assert.deepEqual(payload.players, [{
+      id: 'player-1',
+      displayName: 'Player One',
+      status: 'active',
+      createdAt: 1_000,
+    }])
+
+    const serialized = JSON.stringify(payload)
+    assert.equal(serialized.includes('email'), false)
+    assert.equal(serialized.includes('password'), false)
+    assert.equal(serialized.includes('wallet'), false)
+    assert.equal(serialized.includes('balance'), false)
+    assert.equal(serialized.includes('token'), false)
+
+    const audit = auditEvents.find((entry) => entry.event === 'operations.player_lookup')
+    assert.ok(audit)
+    assert.equal(audit.data.accountId, 'support-1')
+    assert.equal(audit.data.resultCount, 1)
+    assert.equal(Object.hasOwn(audit.data, 'query'), false)
   } finally {
     await close(server)
   }
