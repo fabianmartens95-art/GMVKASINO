@@ -17,8 +17,11 @@ export const GAMES = [
     provider: 'GMVKASINO Originals',
     status: 'coming-soon',
     type: 'slot',
+    reels: 3,
+    rows: 3,
+    paylines: 5,
     icon: '🍓',
-    allowedBets: [],
+    allowedBets: [1, 2, 5, 10, 20],
   },
   {
     id: 'diamond-rush',
