@@ -31,7 +31,8 @@ integrationTest('database migrations are tracked and idempotent', async () => {
          '006_audit_events.sql',
          '007_game_rounds.sql',
          '008_sandbox_payments.sql',
-         '009_account_security_state.sql'
+         '009_account_security_state.sql',
+         '010_account_recovery_tokens.sql'
        )
        ORDER BY name`,
     )
@@ -47,6 +48,7 @@ integrationTest('database migrations are tracked and idempotent', async () => {
         '007_game_rounds.sql',
         '008_sandbox_payments.sql',
         '009_account_security_state.sql',
+        '010_account_recovery_tokens.sql',
       ],
     )
 
@@ -158,6 +160,7 @@ integrationTest('legacy M5 sessions preserve value and history across ledger boo
       '007_game_rounds.sql',
       '008_sandbox_payments.sql',
       '009_account_security_state.sql',
+      '010_account_recovery_tokens.sql',
     ])
 
     const session = await legacyPool.query(
