@@ -98,3 +98,25 @@ The metrics payload must never contain:
 - arbitrary raw URL paths/query parameters
 
 Tests enforce representative secret-safety cases. Any new metric must keep the fixed-cardinality and no-identifier constraints.
+
+
+## Alert evaluation baseline
+
+GMVKASINO now has a read-only evaluator for the current process-lifetime metrics snapshot. It does not page, email, restart services or promote deployments.
+
+The evaluator supports explicit thresholds for:
+
+- aggregate HTTP `5xx` rate after a minimum request count,
+- maximum latency observed for any normalized route/status series,
+- process-lifetime `session.expired` count,
+- process-lifetime `spin.rate_limited` count.
+
+Default engineering thresholds are:
+
+- minimum 20 requests before evaluating the aggregate `5xx` rate,
+- `5xx` rate above 2% = critical,
+- route max latency above 2000 ms = warning,
+- more than 25 expired sessions in one process lifetime = warning,
+- more than 50 rate-limited spins in one process lifetime = warning.
+
+These are engineering baselines, not production SLAs. Because current metrics reset on process restart, the event-count thresholds are process-lifetime signals rather than rolling-window rates. External monitoring/retention must be added before treating them as production alerting.
