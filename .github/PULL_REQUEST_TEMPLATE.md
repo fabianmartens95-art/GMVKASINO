@@ -7,6 +7,11 @@ Auto merge: <!-- yes/no; yes only for isolated, reversible work after CI -->
 Integration wave: <!-- yes/no; yes routes this PR to Integration Wave V2 instead of V1 queue -->
 Production gate: <!-- yes/no -->
 Founder decision: <!-- yes/no -->
+Casino Product Wave: <!-- CPW1 | CPW2 | CPW3 | CPW4 | CPW5 | CPW6 | CPW7 | cross-wave | none -->
+Notion impact: <!-- none | update required -->
+Canonical Notion page: <!-- page name/link or n/a -->
+Notion synced: <!-- yes | no | pending merge | n/a -->
+Cross-project learning: <!-- none | Adopt | Adapt | Reject | Defer -->
 
 ## Goal
 
@@ -38,3 +43,12 @@ Founder decision: <!-- yes/no -->
 ## Production gate
 
 <!-- Required verification before production/real-money promotion, or "Not required." -->
+
+
+## Documentation sync
+
+<!-- If Notion impact is update required: identify the post-merge update and how it was verified. -->
+
+## Cross-project learning check
+
+<!-- Record any reusable GMVGANG/GMVKASINO engineering/governance pattern. Domain logic, repositories and production data stay separate. -->
