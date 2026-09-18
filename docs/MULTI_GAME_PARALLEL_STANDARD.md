@@ -142,3 +142,16 @@ These begin as isolated game implementations and remain `coming-soon` until thei
 ## Real-money boundary
 
 This standard does not activate real money, crypto, custody or external payment rails. All current financial behavior remains DEMO/sandbox only. Any future activation remains subordinate to the Production Readiness Gate, licensing/compliance decisions and provider due diligence.
+
+
+## Mandatory CI certification
+
+Every pull request and every push to `main` now runs:
+
+```bash
+GAME_CERTIFICATION_SAMPLES=250 npm run games:certify
+```
+
+This step is part of the required `test-and-build` job. Registry/catalog mismatches, adapter contract failures, invalid DEMO payout precision, non-finite or negative payouts, and exposure of reserved server-authoritative result fields fail the normal merge gate.
+
+Certification is read-only. It never changes a game status and never promotes a deployment.
