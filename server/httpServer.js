@@ -5,6 +5,7 @@ import { extname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { CasinoError } from './casinoService.js'
 import { requireAccountCapability } from './authorization.js'
+import { GameRoundHistory } from './gameRoundHistory.js'
 
 const PROJECT_ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)))
 const DEFAULT_STATIC_DIR = join(PROJECT_ROOT, 'dist')
@@ -100,6 +101,7 @@ export function normalizeMetricRoute(apiPath) {
     '/auth/login',
     '/auth/me',
     '/auth/logout',
+    '/history/spins',
     '/internal/metrics',
   ])
   return known.has(apiPath) ? `/api/v1${apiPath}` : '/api/v1/other'
@@ -245,9 +247,11 @@ export function createHttpServer({
   authService = service?.authService,
   authRateLimiter = service?.authRateLimiter,
   auditLog = service?.auditLog,
+  gameRoundHistory = service?.gameRoundHistory,
 } = {}) {
   if (!service) throw new Error('service is required')
   if (!config) throw new Error('config is required')
+  const roundHistory = gameRoundHistory || (authService?.pool ? new GameRoundHistory({ pool: authService.pool }) : null)
 
   return createServer(async (req, res) => {
     const startedAt = Date.now()
@@ -395,6 +399,23 @@ export function createHttpServer({
           requestId,
         })
         sendJson(res, 200, { profile, requestId })
+        return
+      }
+
+      if (apiPath === '/history/spins' && req.method === 'GET') {
+        const { profile } = await requiredAuthProfile(req, authService, {
+          capability: 'casino.play',
+          auditLog,
+          requestId,
+        })
+        if (!roundHistory) {
+          throw new CasinoError(503, 'SPIN_HISTORY_UNAVAILABLE', 'Spin history requires PostgreSQL mode')
+        }
+        const rounds = await roundHistory.list({
+          accountId: profile.account.id,
+          limit: url.searchParams.get('limit'),
+        })
+        sendJson(res, 200, { mode: 'demo', rounds, requestId })
         return
       }
 
