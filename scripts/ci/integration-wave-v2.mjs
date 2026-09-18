@@ -399,7 +399,23 @@ Promotion requires the complete repository CI on this combined revision and an u
     throw new Error(`integration PR creation failed with ${pr.status}`);
   }
 
-  summary(`Wave: created #${pr.data.number} from ${included.map((source) => `#${source.number}`).join(", ")}.`);
+  const dispatched = await github("/actions/workflows/ci.yml/dispatches", {
+    method:"POST",
+    headers:{ "Content-Type":"application/json" },
+    body:JSON.stringify({ ref:branch }),
+  });
+
+  if (!dispatched.ok) {
+    await github(`/pulls/${pr.data.number}`, {
+      method:"PATCH",
+      headers:{ "Content-Type":"application/json" },
+      body:JSON.stringify({ state:"closed" }),
+    });
+    await deleteBranch(branch);
+    throw new Error(`combined CI dispatch failed with ${dispatched.status}`);
+  }
+
+  summary(`Wave: created #${pr.data.number} from ${included.map((source) => `#${source.number}`).join(", ")} and dispatched combined CI.`);
 }
 
 async function main() {
