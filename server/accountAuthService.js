@@ -316,6 +316,66 @@ export class AccountAuthService {
     }
   }
 
+  async resetPasswordWithRecovery({ recoveryService, token, password } = {}) {
+    if (!recoveryService || typeof recoveryService.consume !== 'function') {
+      throw new AccountAuthError(503, 'RECOVERY_UNAVAILABLE', 'Account recovery is unavailable')
+    }
+
+    const validPassword = validatePassword(password)
+    const salt = randomBytes(PASSWORD_SALT_BYTES)
+    const passwordHash = await derivePassword(validPassword, salt)
+    const client = await this.pool.connect()
+
+    try {
+      await client.query('BEGIN')
+      const consumed = await recoveryService.consume({ token, executor: client })
+      const timestamp = this.now()
+      const accountResult = await client.query(
+        `UPDATE accounts
+         SET password_scheme = $2,
+             password_salt = $3,
+             password_hash = $4,
+             updated_at = $5
+         WHERE id = $1
+           AND status = 'active'
+         RETURNING id, email, display_name, status, email_verified_at, mfa_enrolled_at, created_at, updated_at`,
+        [
+          consumed.accountId,
+          PASSWORD_SCHEME,
+          salt,
+          passwordHash,
+          timestamp,
+        ],
+      )
+
+      if (!accountResult.rows[0]) {
+        throw new AccountAuthError(409, 'RECOVERY_UNAVAILABLE', 'Account recovery is unavailable')
+      }
+
+      const revokedResult = await client.query(
+        `UPDATE auth_sessions
+         SET revoked_at = $2
+         WHERE account_id = $1
+           AND revoked_at IS NULL`,
+        [consumed.accountId, timestamp],
+      )
+
+      const account = await accountSnapshotWithRoles(client, accountResult.rows[0])
+      await client.query('COMMIT')
+
+      return {
+        account,
+        recoveryTokenId: consumed.id,
+        sessionsRevoked: revokedResult.rowCount,
+      }
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => {})
+      throw error
+    } finally {
+      client.release()
+    }
+  }
+
   async authenticate(token) {
     if (typeof token !== 'string' || token.length < 40 || token.length > 128) return null
     const timestamp = this.now()
