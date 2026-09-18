@@ -44,6 +44,10 @@ jobs:
         run: npm run db:migrate
       - name: Run tests
         run: npm test
+      - name: Certify DEMO game catalog
+        env:
+          GAME_CERTIFICATION_SAMPLES: 250
+        run: npm run games:certify
       - name: Reconcile demo ledger
         env:
           DATABASE_URL: postgresql://gmvkasino:gmvkasino@127.0.0.1:5432/gmvkasino_test
