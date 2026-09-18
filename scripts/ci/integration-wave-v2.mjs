@@ -80,6 +80,58 @@ async function checksReady(sha) {
   return { ok:true, reason:"all current checks green" };
 }
 
+async function requiredCheckReady(sha) {
+  const checks = await github(`/commits/${sha}/check-runs?per_page=100`);
+  if (!checks.ok) throw new Error(`check-runs lookup failed with ${checks.status}`);
+
+  const latest = new Map();
+  for (const check of checks.data?.check_runs || []) {
+    const previous = latest.get(check.name);
+    if (!previous || Number(check.id) > Number(previous.id)) latest.set(check.name, check);
+  }
+
+  const baseline = latest.get(config.requiredCheck);
+  if (!baseline) return { ok:false, state:"missing", reason:`required check '${config.requiredCheck}' has not started` };
+  if (baseline.status !== "completed") return { ok:false, state:"pending", reason:`required check '${config.requiredCheck}' is ${baseline.status}` };
+  if (baseline.conclusion !== "success") return { ok:false, state:"failed", reason:`required check '${config.requiredCheck}' concluded ${baseline.conclusion}` };
+  return { ok:true, state:"success", reason:`required check '${config.requiredCheck}' is green` };
+}
+
+function verificationBranchName(wave) {
+  return `integration/verify-wave-v2-${wave.number}`;
+}
+
+async function dispatchVerificationCi(wave, verificationSha) {
+  const branch = verificationBranchName(wave);
+  const create = await github("/git/refs", {
+    method:"POST",
+    headers:{ "Content-Type":"application/json" },
+    body:JSON.stringify({ ref:`refs/heads/${branch}`, sha:verificationSha }),
+  });
+
+  if (!create.ok && create.status !== 422) {
+    throw new Error(`verification branch creation failed with ${create.status}`);
+  }
+
+  if (!create.ok && create.status === 422) {
+    const update = await github(`/git/refs/heads/${branch}`, {
+      method:"PATCH",
+      headers:{ "Content-Type":"application/json" },
+      body:JSON.stringify({ sha:verificationSha, force:true }),
+    });
+    if (!update.ok) throw new Error(`verification branch update failed with ${update.status}`);
+  }
+
+  const dispatched = await github("/actions/workflows/ci.yml/dispatches", {
+    method:"POST",
+    headers:{ "Content-Type":"application/json" },
+    body:JSON.stringify({ ref:branch }),
+  });
+  if (!dispatched.ok) throw new Error(`verification CI dispatch failed with ${dispatched.status}`);
+
+  summary(`Wave: dispatched combined CI for #${wave.number} on GitHub merge commit ${verificationSha}.`);
+}
+
 async function reviewsReady(number) {
   const reviews = await github(`/pulls/${number}/reviews?per_page=100`);
   if (!reviews.ok) throw new Error(`reviews lookup for #${number} failed with ${reviews.status}`);
@@ -178,6 +230,7 @@ async function invalidateWave(wave, reason) {
     body:JSON.stringify({ state:"closed" }),
   });
   await deleteBranch(wave.head.ref);
+  await deleteBranch(verificationBranchName(wave));
   summary(`Wave: invalidated #${wave.number} — ${reason}.`);
 }
 
@@ -216,13 +269,7 @@ async function promoteWave(wave) {
     }
   }
 
-  const checks = await checksReady(wave.head.sha);
-  if (!checks.ok) {
-    summary(`Wave: #${wave.number} waiting — ${checks.reason}.`);
-    return;
-  }
-
-  const currentWave = await freshPull(wave.number);
+  let currentWave = await freshPull(wave.number);
   if (currentWave.mergeable_state === "dirty") {
     await invalidateWave(currentWave, "integration branch conflicts with current main");
     return;
@@ -235,14 +282,37 @@ async function promoteWave(wave) {
       body:JSON.stringify({ expected_head_sha: currentWave.head.sha }),
     });
     if (!update.ok) throw new Error(`wave branch update failed with ${update.status}`);
-    summary(`Wave: updated #${currentWave.number} onto current ${config.baseBranch}; fresh CI required.`);
+    summary(`Wave: updated #${currentWave.number} onto current ${config.baseBranch}; fresh merge verification required.`);
     return;
   }
 
   if (currentWave.mergeable !== true) {
-    summary(`Wave: #${currentWave.number} is not mergeable yet (state: ${currentWave.mergeable_state}).`);
+    summary(`Wave: #${currentWave.number} is not structurally mergeable yet (state: ${currentWave.mergeable_state}).`);
     return;
   }
+
+  const verificationSha = currentWave.merge_commit_sha;
+  if (!verificationSha) {
+    summary(`Wave: #${currentWave.number} has no GitHub merge commit yet; waiting.`);
+    return;
+  }
+
+  const verification = await requiredCheckReady(verificationSha);
+  if (!verification.ok) {
+    if (verification.state === "missing") {
+      await dispatchVerificationCi(currentWave, verificationSha);
+      return;
+    }
+    summary(`Wave: #${currentWave.number} waiting — ${verification.reason} on merge commit ${verificationSha}.`);
+    return;
+  }
+
+  const refreshed = await freshPull(currentWave.number);
+  if (refreshed.head?.sha !== currentWave.head?.sha || refreshed.merge_commit_sha !== verificationSha) {
+    summary(`Wave: #${currentWave.number} merge commit changed during verification; fresh CI required.`);
+    return;
+  }
+  currentWave = refreshed;
 
   const merged = await github(`/pulls/${currentWave.number}/merge`, {
     method:"PUT",
@@ -255,7 +325,7 @@ async function promoteWave(wave) {
   });
 
   if (!merged.ok || merged.data?.merged !== true) {
-    summary(`Wave: promotion of #${currentWave.number} was refused (HTTP ${merged.status}).`);
+    summary(`Wave: promotion of #${currentWave.number} was refused (HTTP ${merged.status}); leaving it open fail-closed.`);
     return;
   }
 
@@ -276,7 +346,8 @@ async function promoteWave(wave) {
   }
 
   await deleteBranch(currentWave.head.ref);
-  summary(`Wave: promoted #${currentWave.number} with ${metadata.sources.length} source PRs at ${merged.data.sha}.`);
+  await deleteBranch(verificationBranchName(currentWave));
+  summary(`Wave: promoted #${currentWave.number} with ${metadata.sources.length} source PRs at ${merged.data.sha} after exact merge-commit CI.`);
 }
 
 async function buildWave() {
@@ -399,23 +470,7 @@ Promotion requires the complete repository CI on this combined revision and an u
     throw new Error(`integration PR creation failed with ${pr.status}`);
   }
 
-  const dispatched = await github("/actions/workflows/ci.yml/dispatches", {
-    method:"POST",
-    headers:{ "Content-Type":"application/json" },
-    body:JSON.stringify({ ref:branch }),
-  });
-
-  if (!dispatched.ok) {
-    await github(`/pulls/${pr.data.number}`, {
-      method:"PATCH",
-      headers:{ "Content-Type":"application/json" },
-      body:JSON.stringify({ state:"closed" }),
-    });
-    await deleteBranch(branch);
-    throw new Error(`combined CI dispatch failed with ${dispatched.status}`);
-  }
-
-  summary(`Wave: created #${pr.data.number} from ${included.map((source) => `#${source.number}`).join(", ")} and dispatched combined CI.`);
+  summary(`Wave: created #${pr.data.number} from ${included.map((source) => `#${source.number}`).join(", ")}; exact GitHub merge-commit CI will be dispatched by the promotion pass.`);
 }
 
 async function main() {
