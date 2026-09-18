@@ -35,6 +35,10 @@ jobs:
         env:
           SMOKE_BASE_URL: ${{ secrets.STAGING_BASE_URL }}
         run: npm run smoke
+      - name: Run idempotent DEMO money-flow gate
+        env:
+          STAGING_BASE_URL: ${{ secrets.STAGING_BASE_URL }}
+        run: npm run staging:e2e
       - name: Record verification summary
         run: |
           {
