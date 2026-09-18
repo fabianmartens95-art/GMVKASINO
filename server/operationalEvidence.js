@@ -47,9 +47,13 @@ export class OperationalEvidenceReader {
       this.paymentReconciler?.sanitizedSummary?.() || Promise.resolve(null),
     ])
 
+    const referenceMismatches = Array.isArray(ledger.referenceMismatches) ? ledger.referenceMismatches : []
+    const referenceDuplicates = Array.isArray(ledger.referenceDuplicates) ? ledger.referenceDuplicates : []
     const ledgerMismatchCount = ledger.accountMismatches.length
       + ledger.transactionMismatches.length
       + ledger.assetMismatches.length
+      + referenceMismatches.length
+      + referenceDuplicates.length
 
     return {
       checkedAt: ledger.checkedAt,
@@ -64,6 +68,7 @@ export class OperationalEvidenceReader {
           accounts: ledger.accountMismatches.length,
           transactions: ledger.transactionMismatches.length,
           assets: ledger.assetMismatches.length,
+          references: referenceMismatches.length + referenceDuplicates.length,
         },
       },
       payments: payments

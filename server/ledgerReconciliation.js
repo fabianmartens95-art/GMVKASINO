@@ -1,3 +1,5 @@
+import { LEDGER_REFERENCE_RULES, validateLedgerReference } from './ledgerReferenceIntegrity.js'
+
 function atomic(value) {
   return BigInt(String(value ?? '0'))
 }
@@ -98,10 +100,52 @@ export class LedgerReconciler {
         cachedTotalAtomic: row.cached_total_atomic,
       }))
 
+    const referenceTypes = Object.keys(LEDGER_REFERENCE_RULES)
+    const referencesResult = await this.pool.query(
+      `SELECT id, type, reference_type, reference_id, idempotency_key
+       FROM ledger_transactions
+       WHERE type = ANY($1::text[])
+         AND ($2::text IS NULL OR asset_code = $2)
+       ORDER BY type, reference_id, id`,
+      [referenceTypes, normalizedAsset],
+    )
+
+    const referenceMismatches = []
+    for (const row of referencesResult.rows) {
+      for (const issue of validateLedgerReference(row)) {
+        referenceMismatches.push({
+          transactionId: row.id,
+          type: row.type,
+          referenceId: row.reference_id || null,
+          ...issue,
+        })
+      }
+    }
+
+    const duplicateReferencesResult = await this.pool.query(
+      `SELECT type, reference_type, reference_id, COUNT(*)::int AS transaction_count
+       FROM ledger_transactions
+       WHERE type = ANY($1::text[])
+         AND ($2::text IS NULL OR asset_code = $2)
+         AND reference_id IS NOT NULL
+       GROUP BY type, reference_type, reference_id
+       HAVING COUNT(*) > 1
+       ORDER BY type, reference_id`,
+      [referenceTypes, normalizedAsset],
+    )
+    const referenceDuplicates = duplicateReferencesResult.rows.map((row) => ({
+      type: row.type,
+      referenceType: row.reference_type,
+      referenceId: row.reference_id,
+      transactionCount: Number(row.transaction_count),
+    }))
+
     const checkedAt = new Date(this.now()).toISOString()
     const ok = accountMismatches.length === 0
       && transactionMismatches.length === 0
       && assetMismatches.length === 0
+      && referenceMismatches.length === 0
+      && referenceDuplicates.length === 0
 
     return {
       ok,
@@ -113,6 +157,8 @@ export class LedgerReconciler {
       accountMismatches,
       transactionMismatches,
       assetMismatches,
+      referenceMismatches,
+      referenceDuplicates,
     }
   }
 }

@@ -82,7 +82,12 @@ test('reconciliation evidence collapses raw mismatches to counts', async () => {
   const result = await reader.reconciliationSummary()
   assert.equal(result.ledger.ok, false)
   assert.equal(result.ledger.mismatchCount, 2)
-  assert.deepEqual(result.ledger.mismatchCategories, { accounts: 1, transactions: 1, assets: 0 })
+  assert.deepEqual(result.ledger.mismatchCategories, {
+    accounts: 1,
+    transactions: 1,
+    assets: 0,
+    references: 0,
+  })
   assert.equal(JSON.stringify(result).includes('secret-player'), false)
   assert.equal(JSON.stringify(result).includes('secret-tx'), false)
 })
