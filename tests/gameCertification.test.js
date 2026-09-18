@@ -13,7 +13,7 @@ test('current DEMO catalog passes shared certification without changing game sta
   })
 
   assert.equal(report.ok, true)
-  assert.equal(report.totalGames, 4)
+  assert.equal(report.totalGames, GAMES.length)
   assert.equal(report.failedGames, 0)
   assert.deepEqual(GAMES.map((game) => [game.id, game.status]), originalStatuses)
   assert.ok(report.results.every((result) => result.samples === 40))
