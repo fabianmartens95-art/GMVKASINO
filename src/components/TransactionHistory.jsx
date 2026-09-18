@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { listSandboxPayments } from '../api/casinoApi.js'
+import { listDemoSpinHistory, listSandboxPayments } from '../api/casinoApi.js'
 import '../transactionHistory.css'
 
 function formatAmount(operation) {
@@ -19,6 +19,7 @@ function titleFor(operation) {
 
 export default function TransactionHistory({ onExit, onCashier }) {
   const [operations, setOperations] = useState([])
+  const [rounds, setRounds] = useState([])
   const [state, setState] = useState('loading')
   const [error, setError] = useState('')
 
@@ -26,11 +27,16 @@ export default function TransactionHistory({ onExit, onCashier }) {
     setError('')
     setState('loading')
     try {
-      const next = await listSandboxPayments()
-      setOperations(Array.isArray(next) ? next : [])
+      const [nextPayments, nextRounds] = await Promise.all([
+        listSandboxPayments(),
+        listDemoSpinHistory(),
+      ])
+      setOperations(Array.isArray(nextPayments) ? nextPayments : [])
+      setRounds(Array.isArray(nextRounds) ? nextRounds : [])
       setState('ready')
     } catch (requestError) {
       setOperations([])
+      setRounds([])
       if (requestError.status === 401) setState('auth')
       else {
         setError(requestError.message || 'Transaction history could not be loaded.')
@@ -102,6 +108,11 @@ export default function TransactionHistory({ onExit, onCashier }) {
           <article><span>Withdrawals</span><strong>{totals.withdrawals}</strong></article>
         </div>
 
+        <div className="history-section-heading">
+          <h2>Payments</h2>
+          <span>Authoritative sandbox payment states</span>
+        </div>
+
         {operations.length === 0 ? (
           <div className="history-empty">
             <strong>No DEMO transactions yet.</strong>
@@ -122,6 +133,37 @@ export default function TransactionHistory({ onExit, onCashier }) {
                 <div className="history-amount">
                   <span>Amount</span>
                   <strong>{formatAmount(operation)} DEMO</strong>
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+
+        <div className="history-section-heading">
+          <h2>Game rounds</h2>
+          <span>Settled DEMO spins from the server ledger boundary</span>
+        </div>
+
+        {rounds.length === 0 ? (
+          <div className="history-empty">
+            <strong>No settled DEMO spins yet.</strong>
+            <span>Play Golden Vault to create a server-authoritative round.</span>
+          </div>
+        ) : (
+          <div className="history-list" role="list">
+            {rounds.map((round) => (
+              <article className="history-row" role="listitem" key={round.roundId}>
+                <div className="history-type">
+                  <strong>{round.gameId}</strong>
+                  <span>{formatDate(round.createdAt)}</span>
+                </div>
+                <div className="history-state">
+                  <span>Status</span>
+                  <strong>{round.status || 'unknown'}</strong>
+                </div>
+                <div className="history-amount">
+                  <span>Bet / payout</span>
+                  <strong>{round.betExact} / {round.payoutExact} DEMO</strong>
                 </div>
               </article>
             ))}
