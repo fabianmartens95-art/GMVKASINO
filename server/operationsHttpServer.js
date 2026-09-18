@@ -4,6 +4,7 @@ import { requireAccountCapability } from './authorization.js'
 import { accessContext } from './accessControl.js'
 import { CasinoError } from './casinoService.js'
 import { createHttpServer } from './httpServer.js'
+import { PlayerDirectory } from './playerDirectory.js'
 
 function setSecurityHeaders(res) {
   res.setHeader('X-Content-Type-Options', 'nosniff')
@@ -36,10 +37,16 @@ function sendJson(res, status, payload) {
   res.end(JSON.stringify(payload))
 }
 
-function isOperationsOverview(req) {
-  if (req.method !== 'GET') return false
+function operationsRoute(req) {
+  if (req.method !== 'GET') return null
   const url = new URL(req.url || '/', 'http://localhost')
-  return url.pathname === '/api/v1/ops/overview' || url.pathname === '/api/ops/overview'
+  if (url.pathname === '/api/v1/ops/overview' || url.pathname === '/api/ops/overview') {
+    return { type: 'overview', metricRoute: '/api/v1/ops/overview', url }
+  }
+  if (url.pathname === '/api/v1/ops/players' || url.pathname === '/api/ops/players') {
+    return { type: 'players', metricRoute: '/api/v1/ops/players', url }
+  }
+  return null
 }
 
 function summarizeGames(games) {
@@ -58,6 +65,7 @@ export function createOperationsHttpServer({
   authService = service?.authService,
   auditLog = service?.auditLog,
   paymentReconciler = service?.paymentReconciler,
+  playerDirectory = service?.playerDirectory,
   log = console.log,
   ...baseOptions
 } = {}) {
@@ -75,11 +83,11 @@ export function createOperationsHttpServer({
   })
   const baseListener = baseServer.listeners('request')[0]
   baseServer.removeAllListeners('request')
+  const directory = playerDirectory || (authService?.pool ? new PlayerDirectory({ pool: authService.pool }) : null)
 
   return createServer(async (req, res) => {
-    if (!isOperationsOverview(req)) {
-      return baseListener(req, res)
-    }
+    const route = operationsRoute(req)
+    if (!route) return baseListener(req, res)
 
     const startedAt = Date.now()
     const requestId = requestIdFrom(req)
@@ -87,7 +95,7 @@ export function createOperationsHttpServer({
     res.once('finish', () => {
       const durationMs = Date.now() - startedAt
       metrics?.recordRequest?.({
-        route: '/api/v1/ops/overview',
+        route: route.metricRoute,
         method: req.method,
         status: res.statusCode,
         durationMs,
@@ -96,7 +104,7 @@ export function createOperationsHttpServer({
         scope: 'gmvkasino.http',
         requestId,
         method: req.method,
-        path: '/api/v1/ops/overview',
+        path: route.metricRoute,
         status: res.statusCode,
         durationMs,
       }))
@@ -115,6 +123,29 @@ export function createOperationsHttpServer({
       const profile = await authService.profile(token)
       if (!profile) {
         throw new CasinoError(401, 'AUTH_SESSION_REQUIRED', 'Authentication session is missing or expired')
+      }
+
+      if (route.type === 'players') {
+        requireAccountCapability(profile.account, 'player.read', { auditLog, requestId })
+        if (!directory) {
+          throw new CasinoError(503, 'PLAYER_DIRECTORY_UNAVAILABLE', 'Player directory requires PostgreSQL mode')
+        }
+
+        const players = await directory.search({
+          query: route.url.searchParams.get('q'),
+          limit: route.url.searchParams.get('limit'),
+        })
+        auditLog?.record?.('operations.player_lookup', {
+          requestId,
+          accountId: profile.account.id,
+          resultCount: players.length,
+        })
+        sendJson(res, 200, {
+          readOnly: true,
+          players,
+          requestId,
+        })
+        return
       }
 
       requireAccountCapability(profile.account, 'operations.read', { auditLog, requestId })
