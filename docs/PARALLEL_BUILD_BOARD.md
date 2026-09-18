@@ -250,3 +250,24 @@ Fourth autonomous parallel wave:
 All feature streams passed isolated PR CI before merge. This integration record PR runs the complete CI/reconciliation/recovery/build/smoke pipeline against the combined current `main`.
 
 Recovery still has no public reset endpoint or mail-delivery claim. Staff MFA is not yet enforced from the enrollment flag alone; session-level assurance/challenge remains required before that gate can be activated safely. Game certification never changes catalog status automatically. Staging verification remains manual and performs no promotion. Real-money/crypto activation remains blocked by Gate C.
+
+
+## Integration record — Wave 5 (2026-09-18)
+
+Fifth autonomous parallel wave and integration-control upgrade:
+
+- #127 Automatic Integration Queue V1
+- #135 semantic ledger transaction reference reconciliation
+- #136 sanitized player auth-session visibility
+- #138 mandatory DEMO game certification in normal CI
+- #134 persisted auth-session assurance state
+- #137 signed sandbox provider webhook ingress
+- Integration Wave V2 control-plane hardening and smoke validation through #149
+
+This wave demonstrated both integration paths:
+- safe/reversible PRs were automatically integrated by the queue after green CI,
+- Identity and Payments remained manual because they modify security or mutation boundaries.
+
+All security-sensitive PRs were revalidated on current `main` with the required `test-and-build` gate, including security audit, migrations, tests, game certification, ledger/payment reconciliation, restore verification, frontend build, smoke and container build.
+
+Session assurance remains base-only until a real MFA challenge verifier exists. The signed webhook ingress remains sandbox-only and disabled unless an explicit sandbox secret is configured. Real-money/crypto activation remains blocked by Gate C.
