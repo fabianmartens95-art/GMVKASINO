@@ -35,6 +35,10 @@ jobs:
         env:
           SMOKE_BASE_URL: ${{ secrets.STAGING_BASE_URL }}
         run: npm run smoke
+      - name: Run idempotent DEMO money-flow gate
+        env:
+          STAGING_BASE_URL: ${{ secrets.STAGING_BASE_URL }}
+        run: npm run staging:e2e
       - name: Record verification summary
         run: |
           {
@@ -44,6 +48,9 @@ jobs:
             echo "- Environment: \`staging\`"
             echo "- Deployed revision: exact commit match"
             echo "- Remote smoke: passed"
+            echo "- DEMO money/game flow: passed"
+            echo "- Idempotent retry + concurrent duplicate protection: passed"
+            echo "- Wallet consistency: passed"
             echo "- Target supplied through GitHub Environment secret \`STAGING_BASE_URL\`"
             echo "- No automatic promotion performed"
           } >> "$GITHUB_STEP_SUMMARY"
