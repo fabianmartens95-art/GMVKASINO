@@ -212,3 +212,37 @@ After activation, the Classic Slot family contains eight DEMO-playable titles be
 - Fruit Fiesta
 
 Adding a classic title must continue to reuse the shared template rather than duplicate weighted-symbol, grid or payline mechanics. Catalog status remains independent from implementation and may only become `playable` after the applicable CI and Game Certification Gate is green.
+
+
+## Feature Slot Template V1 / Wave W2
+
+Tracking: #191–#196
+
+Wave W2 introduces a second reusable game family without modifying the stable Classic Slot Template V1.
+
+Shared family core: `src/game/featureSlotEngine.js`.
+
+The V1 feature family supports:
+- weighted 5x3 grid generation
+- configured paylines
+- Wild substitution
+- Scatter counting and configured Scatter payouts
+- Free Spins resolved inside one server-authoritative game resolution
+- optional Expanding Wilds
+- optional Sticky Wilds during awarded Free Spins
+- configured bonus payout multiplier
+
+Safety boundaries:
+- bonus state exists only inside one authoritative game result in V1; no client-owned or durable bonus-state truth is introduced
+- V1 Free Spins do not retrigger
+- games cannot mutate wallet, ledger or settlement
+- payout output remains finite, non-negative and DEMO-cent exact
+- adapters still pass through the shared Game Registry and authoritative round/ledger settlement boundary
+
+Planned isolated W2 consumers after #191 merges:
+- #192 Pharaoh’s Fortune
+- #193 Cyber Vault
+- #194 Candy Kingdom
+- #195 Dragon Forge
+
+Shared registration/activation is serialized in #196 after all four isolated modules pass their individual gates.
