@@ -109,6 +109,7 @@ A game is not considered playable/production-ready until all applicable checks p
 - failure paths fail closed
 - standard CI green
 - integration smoke test against current platform revision
+- staging money-flow certification must execute replay, concurrent-duplicate and wallet-consistency checks for every game marked `playable`; testing only the first available game is insufficient
 
 ## Parallelism policy
 

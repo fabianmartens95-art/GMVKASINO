@@ -34,12 +34,81 @@ async function jsonRequest(baseUrl, path, { method = 'GET', sessionId, body, fet
   return payload
 }
 
+export function selectPlayableGamesForGate(gamesPayload) {
+  const games = Array.isArray(gamesPayload?.games) ? gamesPayload.games : []
+  const playable = games.filter((candidate) => (
+    candidate
+    && candidate.status === 'playable'
+    && typeof candidate.id === 'string'
+    && Array.isArray(candidate.allowedBets)
+    && candidate.allowedBets.length > 0
+  ))
+
+  if (!playable.length) {
+    throw new Error('No playable demo game with an allowed bet is available')
+  }
+
+  return playable.map((game) => ({
+    id: game.id,
+    bet: game.allowedBets[0],
+  }))
+}
+
+async function verifyPlayableGame({ target, sessionId, game, fetchImpl }) {
+  const retryKey = `gate-retry-${game.id}-${randomUUID()}`
+  const first = await jsonRequest(target, '/api/v1/spin', {
+    method: 'POST',
+    sessionId,
+    body: { gameId: game.id, bet: game.bet, idempotencyKey: retryKey },
+    fetchImpl,
+  })
+  const replay = await jsonRequest(target, '/api/v1/spin', {
+    method: 'POST',
+    sessionId,
+    body: { gameId: game.id, bet: game.bet, idempotencyKey: retryKey },
+    fetchImpl,
+  })
+  if (!isDeepStrictEqual(first?.result, replay?.result)) {
+    throw new Error(`[${game.id}] Idempotent retry returned a different game-round result`)
+  }
+
+  const afterRetry = await jsonRequest(target, '/api/v1/wallet', { sessionId, fetchImpl })
+  if (Number(afterRetry?.wallet?.balance) !== Number(first?.result?.balance)) {
+    throw new Error(`[${game.id}] Wallet balance does not match the idempotent retry result`)
+  }
+
+  const concurrentKey = `gate-concurrent-${game.id}-${randomUUID()}`
+  const concurrentBody = { gameId: game.id, bet: game.bet, idempotencyKey: concurrentKey }
+  const [concurrentA, concurrentB] = await Promise.all([
+    jsonRequest(target, '/api/v1/spin', {
+      method: 'POST', sessionId, body: concurrentBody, fetchImpl,
+    }),
+    jsonRequest(target, '/api/v1/spin', {
+      method: 'POST', sessionId, body: concurrentBody, fetchImpl,
+    }),
+  ])
+  if (!isDeepStrictEqual(concurrentA?.result, concurrentB?.result)) {
+    throw new Error(`[${game.id}] Concurrent duplicate requests produced different game-round results`)
+  }
+
+  const finalWallet = await jsonRequest(target, '/api/v1/wallet', { sessionId, fetchImpl })
+  if (Number(finalWallet?.wallet?.balance) !== Number(concurrentA?.result?.balance)) {
+    throw new Error(`[${game.id}] Final wallet balance does not match the concurrent idempotent round`)
+  }
+
+  return {
+    gameId: game.id,
+    bet: game.bet,
+    retryIdempotency: 'passed',
+    concurrentIdempotency: 'passed',
+    walletConsistency: 'passed',
+  }
+}
+
 export async function verifyStagingMoneyFlow({ baseUrl, fetchImpl = fetch } = {}) {
   const target = normalizeBaseUrl(baseUrl)
   const gamesPayload = await jsonRequest(target, '/api/v1/games', { fetchImpl })
-  const game = gamesPayload?.games?.find((candidate) => candidate?.status === 'playable' && candidate?.allowedBets?.length)
-  if (!game) throw new Error('No playable demo game with an allowed bet is available')
-  const bet = game.allowedBets[0]
+  const games = selectPlayableGamesForGate(gamesPayload)
 
   const opened = await jsonRequest(target, '/api/v1/session', {
     method: 'POST',
@@ -51,57 +120,32 @@ export async function verifyStagingMoneyFlow({ baseUrl, fetchImpl = fetch } = {}
 
   try {
     const before = await jsonRequest(target, '/api/v1/wallet', { sessionId, fetchImpl })
-    if (!Number.isFinite(Number(before?.wallet?.balance))) throw new Error('Wallet did not return a numeric demo balance')
-
-    const retryKey = `gate-retry-${randomUUID()}`
-    const first = await jsonRequest(target, '/api/v1/spin', {
-      method: 'POST',
-      sessionId,
-      body: { gameId: game.id, bet, idempotencyKey: retryKey },
-      fetchImpl,
-    })
-    const replay = await jsonRequest(target, '/api/v1/spin', {
-      method: 'POST',
-      sessionId,
-      body: { gameId: game.id, bet, idempotencyKey: retryKey },
-      fetchImpl,
-    })
-    if (!isDeepStrictEqual(first?.result, replay?.result)) {
-      throw new Error('Idempotent retry returned a different game-round result')
+    if (!Number.isFinite(Number(before?.wallet?.balance))) {
+      throw new Error('Wallet did not return a numeric demo balance')
     }
 
-    const afterRetry = await jsonRequest(target, '/api/v1/wallet', { sessionId, fetchImpl })
-    if (Number(afterRetry?.wallet?.balance) !== Number(first?.result?.balance)) {
-      throw new Error('Wallet balance does not match the idempotent retry result')
+    const results = []
+    for (const game of games) {
+      results.push(await verifyPlayableGame({
+        target,
+        sessionId,
+        game,
+        fetchImpl,
+      }))
     }
 
-    const concurrentKey = `gate-concurrent-${randomUUID()}`
-    const concurrentBody = { gameId: game.id, bet, idempotencyKey: concurrentKey }
-    const [concurrentA, concurrentB] = await Promise.all([
-      jsonRequest(target, '/api/v1/spin', {
-        method: 'POST', sessionId, body: concurrentBody, fetchImpl,
-      }),
-      jsonRequest(target, '/api/v1/spin', {
-        method: 'POST', sessionId, body: concurrentBody, fetchImpl,
-      }),
-    ])
-    if (!isDeepStrictEqual(concurrentA?.result, concurrentB?.result)) {
-      throw new Error('Concurrent duplicate requests produced different game-round results')
-    }
-
-    const finalWallet = await jsonRequest(target, '/api/v1/wallet', { sessionId, fetchImpl })
-    if (Number(finalWallet?.wallet?.balance) !== Number(concurrentA?.result?.balance)) {
-      throw new Error('Final wallet balance does not match the concurrent idempotent round')
-    }
-
+    const first = results[0]
     return {
       ok: true,
       mode: 'demo',
-      gameId: game.id,
-      bet,
+      gameId: first.gameId,
+      bet: first.bet,
       retryIdempotency: 'passed',
       concurrentIdempotency: 'passed',
       walletConsistency: 'passed',
+      gameCount: results.length,
+      allPlayableGamesCertified: true,
+      games: results,
     }
   } finally {
     await jsonRequest(target, '/api/v1/session', {
