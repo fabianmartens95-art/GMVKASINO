@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   getAuditEvidence,
   getOperationsOverview,
+  getPlayerAuthSessions,
+  searchPlayers,
   getReconciliationEvidence,
   getSandboxPaymentQueue,
   loginOperations,
@@ -66,6 +68,12 @@ export default function OperationsConsole({ onExit }) {
   const [auditEvents, setAuditEvents] = useState([])
   const [evidenceReconciliation, setEvidenceReconciliation] = useState(null)
   const [evidenceError, setEvidenceError] = useState('')
+  const [playerQuery, setPlayerQuery] = useState('')
+  const [playerResults, setPlayerResults] = useState([])
+  const [selectedPlayer, setSelectedPlayer] = useState(null)
+  const [playerSessions, setPlayerSessions] = useState([])
+  const [securityState, setSecurityState] = useState('idle')
+  const [securityError, setSecurityError] = useState('')
 
   const requestTotals = useMemo(() => aggregateRequests(overview?.metrics), [overview])
   const payments = overview?.payments || null
@@ -125,6 +133,43 @@ export default function OperationsConsole({ onExit }) {
     }
 
     await Promise.all(tasks)
+  }
+
+  async function handlePlayerSearch(event) {
+    event.preventDefault()
+    const query = playerQuery.trim()
+    if (query.length < 2) {
+      setSecurityError('Mindestens 2 Zeichen für die Player-Suche eingeben.')
+      return
+    }
+    setSecurityState('loading')
+    setSecurityError('')
+    setSelectedPlayer(null)
+    setPlayerSessions([])
+    try {
+      const players = await searchPlayers(query, { limit: 10 })
+      setPlayerResults(players)
+      setSecurityState('ready')
+    } catch (requestError) {
+      setPlayerResults([])
+      setSecurityState('error')
+      setSecurityError(requestError.message || 'Player-Suche fehlgeschlagen.')
+    }
+  }
+
+  async function handlePlayerSelect(player) {
+    setSelectedPlayer(player)
+    setPlayerSessions([])
+    setSecurityState('loading-sessions')
+    setSecurityError('')
+    try {
+      const sessions = await getPlayerAuthSessions(player.id, { limit: 25 })
+      setPlayerSessions(sessions)
+      setSecurityState('ready')
+    } catch (requestError) {
+      setSecurityState('error')
+      setSecurityError(requestError.message || 'Session-Metadaten konnten nicht geladen werden.')
+    }
   }
 
   async function refresh() {
@@ -206,6 +251,12 @@ export default function OperationsConsole({ onExit }) {
     setAuditEvents([])
     setEvidenceReconciliation(null)
     setEvidenceError('')
+    setPlayerQuery('')
+    setPlayerResults([])
+    setSelectedPlayer(null)
+    setPlayerSessions([])
+    setSecurityState('idle')
+    setSecurityError('')
     setPassword('')
     setState('login')
     setError('')
@@ -335,6 +386,92 @@ export default function OperationsConsole({ onExit }) {
         </div>
 
         {evidenceError && <div className="ops-error">{evidenceError}</div>}
+
+        {hasCapability(overview, 'player.read') && hasCapability(overview, 'session.read') && (
+          <section className="ops-table-section">
+            <div className="ops-section-heading">
+              <div>
+                <h2>Player Security Center</h2>
+                <span>Read-only · sanitized account and auth-session metadata</span>
+              </div>
+            </div>
+
+            <form className="ops-security-search" onSubmit={handlePlayerSearch}>
+              <input
+                type="search"
+                value={playerQuery}
+                onChange={(event) => setPlayerQuery(event.target.value.slice(0, 64))}
+                minLength={2}
+                maxLength={64}
+                placeholder="Account ID or display-name prefix"
+                aria-label="Player lookup"
+              />
+              <button type="submit" disabled={securityState === 'loading'}>
+                {securityState === 'loading' ? 'Searching…' : 'Search'}
+              </button>
+            </form>
+
+            {securityError && <div className="ops-error">{securityError}</div>}
+
+            {playerResults.length > 0 && (
+              <div className="ops-security-results">
+                {playerResults.map((player) => (
+                  <button
+                    type="button"
+                    key={player.id}
+                    className={selectedPlayer?.id === player.id ? 'is-selected' : ''}
+                    onClick={() => handlePlayerSelect(player)}
+                  >
+                    <strong>{player.displayName || 'Unnamed player'}</strong>
+                    <span>{player.status} · created {formatDate(player.createdAt)}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {selectedPlayer && (
+              <div className="ops-security-detail">
+                <div className="ops-section-heading">
+                  <div>
+                    <h3>{selectedPlayer.displayName || 'Unnamed player'}</h3>
+                    <span>Account status: {selectedPlayer.status} · session metadata only</span>
+                  </div>
+                  <span>{playerSessions.length} sessions</span>
+                </div>
+                <div className="ops-table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Opaque session ref</th>
+                        <th>State</th>
+                        <th>Created</th>
+                        <th>Last seen</th>
+                        <th>Expires</th>
+                        <th>Revoked</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {playerSessions.length === 0 ? (
+                        <tr><td colSpan="6">No auth-session metadata available.</td></tr>
+                      ) : playerSessions.map((session) => (
+                        <tr key={session.sessionRef}>
+                          <td>{session.sessionRef}</td>
+                          <td>{session.state}</td>
+                          <td>{formatDate(session.createdAt)}</td>
+                          <td>{formatDate(session.lastSeenAt)}</td>
+                          <td>{formatDate(session.expiresAt)}</td>
+                          <td>{session.revokedAt ? formatDate(session.revokedAt) : '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </section>
+        )}
+
+
 
         {hasCapability(overview, 'reconciliation.read') && evidenceReconciliation && (
           <section className="ops-table-section">

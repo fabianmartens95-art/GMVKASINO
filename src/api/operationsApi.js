@@ -44,6 +44,17 @@ export async function getOperationsOverview() {
   return requestOverview()
 }
 
+export async function searchPlayers(query, { limit = 10 } = {}) {
+  if (typeof query !== 'string' || query.trim().length < 2) {
+    throw new Error('Player lookup requires at least 2 characters')
+  }
+  const safeLimit = Number.isInteger(limit) ? Math.max(1, Math.min(25, limit)) : 10
+  const payload = await requestStaff(
+    `/ops/players?q=${encodeURIComponent(query.trim().slice(0, 64))}&limit=${safeLimit}`,
+  )
+  return payload.players || []
+}
+
 export async function getPlayerAuthSessions(accountId, { limit = 25 } = {}) {
   if (typeof accountId !== 'string' || !accountId.trim()) throw new Error('Account ID is required')
   const safeLimit = Number.isInteger(limit) ? Math.max(1, Math.min(100, limit)) : 25
