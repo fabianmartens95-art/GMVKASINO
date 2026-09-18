@@ -1,39 +1,69 @@
 export const LEDGER_REFERENCE_RULES = Object.freeze({
   INITIAL_CREDIT: Object.freeze({
-    referenceType: 'account',
-    idempotencyKey(referenceId) {
-      return `initial-credit:${referenceId}`
-    },
+    variants: Object.freeze([
+      Object.freeze({
+        referenceType: 'account',
+        idempotencyKey(referenceId) {
+          return `initial-credit:${referenceId}`
+        },
+      }),
+      Object.freeze({
+        referenceType: 'demo_session',
+        idempotencyKey(referenceId) {
+          return `bootstrap:${referenceId}`
+        },
+      }),
+    ]),
   }),
   GAME_SETTLEMENT: Object.freeze({
-    referenceType: 'spin',
-    idempotencyKey(referenceId) {
-      return `spin:${referenceId}`
-    },
+    variants: Object.freeze([
+      Object.freeze({
+        referenceType: 'spin',
+        idempotencyKey(referenceId) {
+          return `spin:${referenceId}`
+        },
+      }),
+    ]),
   }),
   SANDBOX_DEPOSIT: Object.freeze({
-    referenceType: 'payment_operation',
-    idempotencyKey(referenceId) {
-      return `sandbox-deposit:${referenceId}:complete`
-    },
+    variants: Object.freeze([
+      Object.freeze({
+        referenceType: 'payment_operation',
+        idempotencyKey(referenceId) {
+          return `sandbox-deposit:${referenceId}:complete`
+        },
+      }),
+    ]),
   }),
   SANDBOX_WITHDRAWAL_RESERVE: Object.freeze({
-    referenceType: 'payment_operation',
-    idempotencyKey(referenceId) {
-      return `sandbox-withdrawal:${referenceId}:reserve`
-    },
+    variants: Object.freeze([
+      Object.freeze({
+        referenceType: 'payment_operation',
+        idempotencyKey(referenceId) {
+          return `sandbox-withdrawal:${referenceId}:reserve`
+        },
+      }),
+    ]),
   }),
   SANDBOX_WITHDRAWAL_RELEASE: Object.freeze({
-    referenceType: 'payment_operation',
-    idempotencyKey(referenceId) {
-      return `sandbox-withdrawal:${referenceId}:release`
-    },
+    variants: Object.freeze([
+      Object.freeze({
+        referenceType: 'payment_operation',
+        idempotencyKey(referenceId) {
+          return `sandbox-withdrawal:${referenceId}:release`
+        },
+      }),
+    ]),
   }),
   SANDBOX_WITHDRAWAL: Object.freeze({
-    referenceType: 'payment_operation',
-    idempotencyKey(referenceId) {
-      return `sandbox-withdrawal:${referenceId}:complete`
-    },
+    variants: Object.freeze([
+      Object.freeze({
+        referenceType: 'payment_operation',
+        idempotencyKey(referenceId) {
+          return `sandbox-withdrawal:${referenceId}:complete`
+        },
+      }),
+    ]),
   }),
 })
 
@@ -50,15 +80,18 @@ export function validateLedgerReference(row) {
     issues.push({ code: 'reference_id_missing' })
     return issues
   }
-  if (referenceType !== rule.referenceType) {
+
+  const variant = rule.variants.find((candidate) => candidate.referenceType === referenceType)
+  if (!variant) {
     issues.push({
       code: 'reference_type_mismatch',
-      expected: rule.referenceType,
+      expected: rule.variants.map((candidate) => candidate.referenceType),
       actual: referenceType || null,
     })
+    return issues
   }
 
-  const expectedKey = rule.idempotencyKey(referenceId)
+  const expectedKey = variant.idempotencyKey(referenceId)
   if (idempotencyKey !== expectedKey) {
     issues.push({
       code: 'idempotency_reference_mismatch',
