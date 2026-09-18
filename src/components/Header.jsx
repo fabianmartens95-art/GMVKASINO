@@ -1,4 +1,4 @@
-export default function Header({ balance, onHome, onCashier, onAccount, onOpenLogin, player }) {
+export default function Header({ balance, onHome, onCashier, onAccount, onHistory, onOpenLogin, player }) {
   return (
     <header className="topbar">
       <button className="brand" onClick={onHome} aria-label="Open casino lobby">
@@ -12,6 +12,7 @@ export default function Header({ balance, onHome, onCashier, onAccount, onOpenLo
         <button onClick={onHome}>Casino</button>
         <button onClick={onCashier}>Cashier</button>
         <button onClick={onAccount}>Account</button>
+        <button onClick={onHistory}>History</button>
         <button disabled>Live</button>
         <button disabled>Rewards</button>
       </nav>

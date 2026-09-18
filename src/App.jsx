@@ -6,6 +6,7 @@ import LoginModal from './components/LoginModal.jsx'
 import OperationsConsole from './components/OperationsConsole.jsx'
 import Cashier from './components/Cashier.jsx'
 import AccountPanel from './components/AccountPanel.jsx'
+import TransactionHistory from './components/TransactionHistory.jsx'
 import { openDemoSession, syncDemoPlayer } from './api/casinoApi.js'
 import { usePersistentState } from './hooks/usePersistentState.js'
 
@@ -16,6 +17,7 @@ function routeFromHash() {
   if (window.location.hash === '#ops') return 'ops'
   if (window.location.hash === '#cashier') return 'cashier'
   if (window.location.hash === '#account') return 'account'
+  if (window.location.hash === '#history') return 'history'
   return window.location.hash === `#game/${DEMO_GAME_ID}` ? 'slot' : 'lobby'
 }
 
@@ -33,7 +35,7 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    if (['ops', 'cashier', 'account'].includes(view)) return undefined
+    if (['ops', 'cashier', 'account', 'history'].includes(view)) return undefined
 
     let active = true
     setServerState('connecting')
@@ -58,6 +60,7 @@ export default function App() {
     if (nextView === 'ops') window.location.hash = 'ops'
     else if (nextView === 'cashier') window.location.hash = 'cashier'
     else if (nextView === 'account') window.location.hash = 'account'
+    else if (nextView === 'history') window.location.hash = 'history'
     else window.location.hash = nextView === 'slot' ? `game/${DEMO_GAME_ID}` : 'lobby'
     setView(nextView)
   }
@@ -83,6 +86,15 @@ export default function App() {
     return <Cashier onExit={() => navigate('lobby')} onBalanceChange={setBalance} />
   }
 
+  if (view === 'history') {
+    return (
+      <TransactionHistory
+        onExit={() => navigate('lobby')}
+        onCashier={() => navigate('cashier')}
+      />
+    )
+  }
+
   if (view === 'account') {
     return (
       <AccountPanel
@@ -100,6 +112,7 @@ export default function App() {
         onHome={() => navigate('lobby')}
         onCashier={() => navigate('cashier')}
         onAccount={() => navigate('account')}
+        onHistory={() => navigate('history')}
         onOpenLogin={() => setLoginOpen(true)}
         player={player}
       />
