@@ -12,7 +12,6 @@ test('game round history is account-scoped and sanitized', async () => {
           rows: [{
             id: 'round-1',
             game_id: 'golden-vault',
-            asset_code: 'DEMO',
             bet_atomic: '250',
             payout_atomic: '500',
             status: 'settled',
@@ -27,11 +26,8 @@ test('game round history is account-scoped and sanitized', async () => {
   assert.deepEqual(rows, [{
     roundId: 'round-1',
     gameId: 'golden-vault',
-    asset: { code: 'DEMO', decimals: 2, kind: 'demo' },
-    betAtomic: '250',
     bet: 2.5,
     betExact: '2.50',
-    payoutAtomic: '500',
     payout: 5,
     payoutExact: '5.00',
     status: 'settled',
