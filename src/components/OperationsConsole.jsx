@@ -27,6 +27,11 @@ function formatUptime(value) {
   return `${hours}h ${minutes}m`
 }
 
+function hasCapability(overview, capability) {
+  const capabilities = Array.isArray(overview?.access?.capabilities) ? overview.access.capabilities : []
+  return capabilities.includes('*') || capabilities.includes(capability)
+}
+
 function paymentStatusRows(payments) {
   return Object.entries(payments?.countsByStatus || {})
     .sort(([a], [b]) => a.localeCompare(b))
@@ -58,8 +63,13 @@ export default function OperationsConsole({ onExit }) {
   const requestTotals = useMemo(() => aggregateRequests(overview?.metrics), [overview])
   const payments = overview?.payments || null
 
-  async function refreshFinanceQueue() {
+  async function refreshFinanceQueue(currentOverview = overview) {
     setQueueError('')
+    if (!hasCapability(currentOverview, 'payments.sandbox.manage')) {
+      setQueue([])
+      setQueueAccess('not-permitted')
+      return
+    }
     try {
       const operations = await getSandboxPaymentQueue()
       setQueue(operations)
@@ -81,7 +91,7 @@ export default function OperationsConsole({ onExit }) {
       const next = await getOperationsOverview()
       setOverview(next)
       setState('ready')
-      await refreshFinanceQueue()
+      await refreshFinanceQueue(next)
     } catch (requestError) {
       setOverview(null)
       setQueue([])
@@ -109,7 +119,7 @@ export default function OperationsConsole({ onExit }) {
       setOverview(result.overview)
       setPassword('')
       setState('ready')
-      await refreshFinanceQueue()
+      await refreshFinanceQueue(result.overview)
     } catch (loginError) {
       setPassword('')
       if (loginError.status === 403) {
@@ -128,8 +138,10 @@ export default function OperationsConsole({ onExit }) {
     try {
       await transitionSandboxPayment(operation.id, action)
       await Promise.all([
-        getOperationsOverview().then(setOverview),
-        refreshFinanceQueue(),
+        getOperationsOverview().then((nextOverview) => {
+          setOverview(nextOverview)
+          return refreshFinanceQueue(nextOverview)
+        }),
       ])
     } catch (transitionError) {
       setQueueError(transitionError.message || 'Sandbox transition failed.')
@@ -235,7 +247,7 @@ export default function OperationsConsole({ onExit }) {
           <span>Persistence {overview?.persistence || 'unknown'}</span>
           <span>{overview?.readOnly ? 'Overview read-only' : 'Unknown mode'}</span>
           {payments && <span>Payments {payments.ok ? 'reconciled' : 'anomaly detected'}</span>}
-          <span>Finance queue {queueAccess === 'allowed' ? 'enabled' : queueAccess === 'denied' ? 'not permitted' : queueAccess}</span>
+          <span>Finance queue {queueAccess === 'allowed' ? 'enabled' : ['denied', 'not-permitted'].includes(queueAccess) ? 'not permitted' : queueAccess}</span>
         </div>
 
         <div className="ops-grid">

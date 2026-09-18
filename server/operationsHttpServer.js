@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { createServer } from 'node:http'
 import { requireAccountCapability } from './authorization.js'
+import { accessContext } from './accessControl.js'
 import { CasinoError } from './casinoService.js'
 import { createHttpServer } from './httpServer.js'
 
@@ -130,6 +131,7 @@ export function createOperationsHttpServer({
         revision: config.deploymentRevision || null,
         persistence: readiness?.backend || 'unknown',
         games: summarizeGames(games),
+        access: accessContext(profile.account),
         payments: paymentHealth,
         metrics: metricsSnapshot,
         generatedAt: new Date().toISOString(),
