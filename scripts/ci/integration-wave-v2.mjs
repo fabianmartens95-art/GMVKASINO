@@ -153,6 +153,67 @@ async function awaitRequiredCheck(sha, label) {
   return false;
 }
 
+async function findPullRequestCiRun(pull) {
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    const response = await github(
+      `/actions/workflows/ci.yml/runs?event=pull_request&branch=${encodeURIComponent(pull.head.ref)}&per_page=20`
+    );
+    if (!response.ok) throw new Error(`pull-request CI lookup failed with ${response.status}`);
+
+    const matches = (response.data?.workflow_runs || [])
+      .filter((run) => run.head_sha === pull.head.sha)
+      .sort((a, b) => Number(b.id) - Number(a.id));
+
+    if (matches.length) return matches[0];
+    await sleep(1000);
+  }
+  return null;
+}
+
+async function approveAndAwaitPullRequestCi(pull) {
+  let run = await findPullRequestCiRun(pull);
+  if (!run) {
+    summary(`Wave: #${pull.number} has no pull-request CI run; fail-closed.`);
+    return false;
+  }
+
+  if (run.conclusion === "action_required") {
+    const approved = await github(`/actions/runs/${run.id}/approve`, { method:"POST" });
+    if (!approved.ok) {
+      summary(`Wave: could not approve pull-request CI for #${pull.number} (HTTP ${approved.status}).`);
+      return false;
+    }
+    summary(`Wave: approved native pull-request CI run ${run.id} for #${pull.number}.`);
+  }
+
+  for (let attempt = 0; attempt < 120; attempt += 1) {
+    const response = await github(`/actions/runs/${run.id}`);
+    if (!response.ok) throw new Error(`CI run ${run.id} lookup failed with ${response.status}`);
+    run = response.data;
+
+    if (run.status === "completed") {
+      if (run.conclusion === "success") {
+        summary(`Wave: native pull-request CI run ${run.id} is green for #${pull.number}.`);
+        return true;
+      }
+      if (run.conclusion === "action_required") {
+        summary(`Wave: native pull-request CI run ${run.id} still requires action after approval.`);
+        return false;
+      }
+      summary(`Wave: native pull-request CI run ${run.id} concluded ${run.conclusion}.`);
+      return false;
+    }
+
+    if (attempt === 119) {
+      summary(`Wave: timed out waiting for native pull-request CI run ${run.id}.`);
+      return false;
+    }
+    await sleep(5000);
+  }
+
+  return false;
+}
+
 async function reviewsReady(number) {
   const reviews = await github(`/pulls/${number}/reviews?per_page=100`);
   if (!reviews.ok) throw new Error(`reviews lookup for #${number} failed with ${reviews.status}`);
@@ -304,7 +365,7 @@ async function promoteWave(wave) {
       body:JSON.stringify({ expected_head_sha: currentWave.head.sha }),
     });
     if (!update.ok) throw new Error(`wave branch update failed with ${update.status}`);
-    summary(`Wave: updated #${currentWave.number} onto current ${config.baseBranch}; fresh merge verification required.`);
+    summary(`Wave: updated #${currentWave.number} onto current ${config.baseBranch}; native PR CI will run on the new head.`);
     return;
   }
 
@@ -313,44 +374,18 @@ async function promoteWave(wave) {
     return;
   }
 
-  const headVerificationSha = currentWave.head?.sha;
-  const mergeVerificationSha = currentWave.merge_commit_sha;
-  if (!headVerificationSha || !mergeVerificationSha) {
-    summary(`Wave: #${currentWave.number} is missing head or GitHub merge commit; waiting.`);
-    return;
-  }
+  const verifiedHead = currentWave.head.sha;
+  const verifiedBase = currentWave.base.sha;
 
-  const headBefore = await requiredCheckReady(headVerificationSha);
-  const mergeBefore = await requiredCheckReady(mergeVerificationSha);
-
-  if (headBefore.state === "failed") {
-    summary(`Wave: #${currentWave.number} head verification failed — ${headBefore.reason}.`);
-    return;
-  }
-  if (mergeBefore.state === "failed") {
-    summary(`Wave: #${currentWave.number} merge verification failed — ${mergeBefore.reason}.`);
-    return;
-  }
-
-  if (headBefore.state === "missing") {
-    await dispatchVerificationCi(currentWave, headVerificationSha, "head");
-  }
-  if (mergeBefore.state === "missing") {
-    await dispatchVerificationCi(currentWave, mergeVerificationSha, "merge");
-  }
-
-  const [headGreen, mergeGreen] = await Promise.all([
-    headBefore.ok ? Promise.resolve(true) : awaitRequiredCheck(headVerificationSha, "head"),
-    mergeBefore.ok ? Promise.resolve(true) : awaitRequiredCheck(mergeVerificationSha, "merge"),
-  ]);
-  if (!headGreen || !mergeGreen) return;
+  const ciGreen = await approveAndAwaitPullRequestCi(currentWave);
+  if (!ciGreen) return;
 
   const refreshed = await freshPull(currentWave.number);
   if (
-    refreshed.head?.sha !== headVerificationSha ||
-    refreshed.merge_commit_sha !== mergeVerificationSha
+    refreshed.head?.sha !== verifiedHead ||
+    refreshed.base?.sha !== verifiedBase
   ) {
-    summary(`Wave: #${currentWave.number} head/base changed during verification; fresh dual CI required.`);
+    summary(`Wave: #${currentWave.number} head/base changed during native PR CI; fresh verification required.`);
     return;
   }
   currentWave = refreshed;
@@ -389,7 +424,8 @@ async function promoteWave(wave) {
   await deleteBranch(currentWave.head.ref);
   await deleteBranch(verificationBranchName(currentWave, "head"));
   await deleteBranch(verificationBranchName(currentWave, "merge"));
-  summary(`Wave: promoted #${currentWave.number} with ${metadata.sources.length} source PRs at ${merged.data.sha} after dual head + merge verification.`);
+  await deleteBranch(`integration/verify-wave-v2-${currentWave.number}`);
+  summary(`Wave: promoted #${currentWave.number} with ${metadata.sources.length} source PRs at ${merged.data.sha} after native pull-request CI.`);
 }
 
 async function buildWave() {
@@ -512,7 +548,9 @@ Promotion requires the complete repository CI on this combined revision and an u
     throw new Error(`integration PR creation failed with ${pr.status}`);
   }
 
-  summary(`Wave: created #${pr.data.number} from ${included.map((source) => `#${source.number}`).join(", ")}; exact GitHub merge-commit CI will be dispatched by the promotion pass.`);
+  summary(`Wave: created #${pr.data.number} from ${included.map((source) => `#${source.number}`).join(", ")}; approving native pull-request CI.`);
+  const createdWave = await freshPull(pr.data.number);
+  await promoteWave(createdWave);
 }
 
 async function main() {
