@@ -32,6 +32,8 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      - name: Validate integration queue policy
+        run: node --check scripts/ci/integration-queue.mjs
       - name: Install dependencies
         run: npm ci
       - name: Security audit
