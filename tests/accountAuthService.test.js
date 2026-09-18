@@ -43,6 +43,7 @@ integrationTest('account registration hashes credentials and auth tokens while p
     assert.equal(registered.wallet.balance, 1000)
     assert.equal(registered.wallet.accountId, registered.account.id)
     assert.ok(registered.auth.token.length >= 40)
+    assert.deepEqual(registered.auth.assurance, { level: 'base', verifiedAt: null })
 
     const storedAccount = await pool.query(
       `SELECT password_scheme, password_salt, password_hash
@@ -65,6 +66,7 @@ integrationTest('account registration hashes credentials and auth tokens while p
     assert.equal(profile.account.id, registered.account.id)
     assert.deepEqual(profile.account.roles, ['player'])
     assert.equal(profile.wallet.balance, 1000)
+    assert.deepEqual(profile.assurance, { level: 'base', verifiedAt: null })
 
     await assert.rejects(
       auth.login({ email: 'player.one@example.com', password: 'definitely-wrong-password' }),
@@ -79,6 +81,7 @@ integrationTest('account registration hashes credentials and auth tokens while p
     assert.deepEqual(loggedIn.account.roles, ['player'])
     assert.equal(loggedIn.wallet.id, registered.wallet.id)
     assert.notEqual(loggedIn.auth.token, registered.auth.token)
+    assert.deepEqual(loggedIn.auth.assurance, { level: 'base', verifiedAt: null })
 
     await assert.rejects(
       auth.register({

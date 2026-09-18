@@ -128,7 +128,11 @@ export class AccountAuthService {
       [randomUUID(), accountId, tokenHash(token), timestamp, expiresAt],
     )
 
-    return { token, expiresAt }
+    return {
+      token,
+      expiresAt,
+      assurance: { level: 'base', verifiedAt: null },
+    }
   }
 
   async register({ email, password, displayName = '' } = {}) {
@@ -388,12 +392,14 @@ export class AccountAuthService {
            AND revoked_at IS NULL
            AND last_seen_at > $3
            AND expires_at > $2
-         RETURNING account_id, expires_at
+         RETURNING account_id, expires_at, assurance_level, assurance_at
        )
        SELECT a.id, a.email, a.display_name, a.status,
               a.email_verified_at, a.mfa_enrolled_at,
               a.created_at, a.updated_at,
-              touched.expires_at
+              touched.expires_at,
+              touched.assurance_level,
+              touched.assurance_at
        FROM touched
        JOIN accounts a ON a.id = touched.account_id
        WHERE a.status = 'active'`,
@@ -404,6 +410,12 @@ export class AccountAuthService {
     return {
       account: await accountSnapshotWithRoles(this.pool, row),
       expiresAt: Number(row.expires_at),
+      assurance: {
+        level: row.assurance_level || 'base',
+        verifiedAt: row.assurance_at === null || row.assurance_at === undefined
+          ? null
+          : Number(row.assurance_at),
+      },
     }
   }
 

@@ -1,3 +1,5 @@
+import { sessionMeetsAssurance } from './sessionAssurance.js'
+
 export const AUTH_ASSURANCE = Object.freeze({
   BASE: 'base',
   VERIFIED_EMAIL: 'verified_email',
@@ -42,14 +44,19 @@ export function requiredAssuranceForCapability(capability) {
   return CAPABILITY_ASSURANCE[normalized] || AUTH_ASSURANCE.MFA
 }
 
-export function evaluateStepUpRequirement(account, capability) {
+export function evaluateStepUpRequirement(account, capability, { sessionAssurance = null } = {}) {
   const required = requiredAssuranceForCapability(capability)
   const emailVerified = Boolean(account?.emailVerified)
   const mfaEnrolled = Boolean(account?.mfaEnrolled)
 
   const satisfied = required === AUTH_ASSURANCE.BASE
     || (required === AUTH_ASSURANCE.VERIFIED_EMAIL && emailVerified)
-    || (required === AUTH_ASSURANCE.MFA && emailVerified && mfaEnrolled)
+    || (
+      required === AUTH_ASSURANCE.MFA
+      && emailVerified
+      && mfaEnrolled
+      && sessionMeetsAssurance(sessionAssurance, AUTH_ASSURANCE.MFA)
+    )
 
   return Object.freeze({
     capability: normalizeCapability(capability),
@@ -58,6 +65,13 @@ export function evaluateStepUpRequirement(account, capability) {
     missing: Object.freeze([
       ...(required !== AUTH_ASSURANCE.BASE && !emailVerified ? ['verified_email'] : []),
       ...(required === AUTH_ASSURANCE.MFA && !mfaEnrolled ? ['mfa'] : []),
+      ...(
+        required === AUTH_ASSURANCE.MFA
+        && mfaEnrolled
+        && !sessionMeetsAssurance(sessionAssurance, AUTH_ASSURANCE.MFA)
+          ? ['session_mfa']
+          : []
+      ),
     ]),
   })
 }
