@@ -33,7 +33,6 @@ export class GameRoundHistory {
       `SELECT
          id,
          game_id,
-         asset_code,
          bet_atomic::text AS bet_atomic,
          payout_atomic::text AS payout_atomic,
          status,
@@ -48,11 +47,8 @@ export class GameRoundHistory {
     return result.rows.map((row) => ({
       roundId: row.id,
       gameId: row.game_id,
-      asset: { code: row.asset_code, decimals: 2, kind: 'demo' },
-      betAtomic: String(row.bet_atomic),
       bet: atomicToNumber(row.bet_atomic, 2),
       betExact: atomicToDecimalString(row.bet_atomic, 2),
-      payoutAtomic: String(row.payout_atomic),
       payout: atomicToNumber(row.payout_atomic, 2),
       payoutExact: atomicToDecimalString(row.payout_atomic, 2),
       status: row.status,
