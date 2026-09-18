@@ -129,7 +129,7 @@ test('HTTP API rejects unavailable games and disallowed bets', async () => {
     const session = await openSession(baseUrl)
 
     const unavailable = await spin(baseUrl, session.id, {
-      gameId: 'neon-fruits',
+      gameId: 'missing-game',
       bet: 1,
     })
     assert.equal(unavailable.status, 404)

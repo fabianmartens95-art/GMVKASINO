@@ -9,27 +9,37 @@ import AccountPanel from './components/AccountPanel.jsx'
 import TransactionHistory from './components/TransactionHistory.jsx'
 import { openDemoSession, syncDemoPlayer } from './api/casinoApi.js'
 import { usePersistentState } from './hooks/usePersistentState.js'
+import { getGameById } from './config/games.js'
 
 const STARTING_BALANCE = 1000
-const DEMO_GAME_ID = 'golden-vault'
+function gameIdFromHash() {
+  const match = window.location.hash.match(/^#game\/([a-z0-9-]+)$/)
+  if (!match) return null
+  const game = getGameById(match[1])
+  return game?.status === 'playable' ? game.id : null
+}
 
 function routeFromHash() {
   if (window.location.hash === '#ops') return 'ops'
   if (window.location.hash === '#cashier') return 'cashier'
   if (window.location.hash === '#account') return 'account'
   if (window.location.hash === '#history') return 'history'
-  return window.location.hash === `#game/${DEMO_GAME_ID}` ? 'slot' : 'lobby'
+  return gameIdFromHash() ? 'slot' : 'lobby'
 }
 
 export default function App() {
   const [view, setView] = useState(routeFromHash)
+  const [selectedGameId, setSelectedGameId] = useState(gameIdFromHash)
   const [balance, setBalance] = useState(STARTING_BALANCE)
   const [player, setPlayer] = usePersistentState('gmvkasino.demo.player', '')
   const [loginOpen, setLoginOpen] = useState(false)
   const [serverState, setServerState] = useState('connecting')
 
   useEffect(() => {
-    const onHashChange = () => setView(routeFromHash())
+    const onHashChange = () => {
+      setSelectedGameId(gameIdFromHash())
+      setView(routeFromHash())
+    }
     window.addEventListener('hashchange', onHashChange)
     return () => window.removeEventListener('hashchange', onHashChange)
   }, [])
@@ -56,12 +66,20 @@ export default function App() {
     }
   }, [view])
 
-  function navigate(nextView) {
+  function navigate(nextView, gameId = null) {
     if (nextView === 'ops') window.location.hash = 'ops'
     else if (nextView === 'cashier') window.location.hash = 'cashier'
     else if (nextView === 'account') window.location.hash = 'account'
     else if (nextView === 'history') window.location.hash = 'history'
-    else window.location.hash = nextView === 'slot' ? `game/${DEMO_GAME_ID}` : 'lobby'
+    else if (nextView === 'slot' && gameId) {
+      const game = getGameById(gameId)
+      if (game?.status !== 'playable') return
+      setSelectedGameId(game.id)
+      window.location.hash = `game/${game.id}`
+    } else {
+      setSelectedGameId(null)
+      window.location.hash = 'lobby'
+    }
     setView(nextView)
   }
 
@@ -118,16 +136,19 @@ export default function App() {
       />
 
       {view === 'lobby' ? (
-        <CasinoLobby onPlay={() => navigate('slot')} />
-      ) : (
+        <CasinoLobby onPlay={(gameId) => navigate('slot', gameId)} />
+      ) : selectedGameId ? (
         <SlotMachine
-          gameId={DEMO_GAME_ID}
+          key={selectedGameId}
+          gameId={selectedGameId}
           balance={balance}
           setBalance={setBalance}
           onBack={() => navigate('lobby')}
           serverState={serverState}
           setServerState={setServerState}
         />
+      ) : (
+        <CasinoLobby onPlay={(gameId) => navigate('slot', gameId)} />
       )}
 
       <footer>
