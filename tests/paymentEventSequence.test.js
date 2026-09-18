@@ -42,3 +42,13 @@ test('events after terminal state and duplicate event types are rejected', () =>
   assert.ok(mismatches.some((item) => item.code === 'event_after_terminal'))
   assert.ok(mismatches.some((item) => item.code === 'event_sequence_mismatch'))
 })
+
+
+test('equal timestamps do not create a false out-of-order finding', () => {
+  const mismatches = validatePaymentEventSequence(
+    { kind: 'withdrawal', status: 'completed' },
+    [event('approve', 10, 'z-approve'), event('complete', 10, 'a-complete')],
+  )
+  assert.equal(mismatches.some((item) => item.code === 'event_out_of_order'), false)
+  assert.equal(mismatches.some((item) => item.code === 'event_sequence_mismatch'), false)
+})
