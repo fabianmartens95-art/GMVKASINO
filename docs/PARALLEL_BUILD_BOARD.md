@@ -271,3 +271,28 @@ This wave demonstrated both integration paths:
 All security-sensitive PRs were revalidated on current `main` with the required `test-and-build` gate, including security audit, migrations, tests, game certification, ledger/payment reconciliation, restore verification, frontend build, smoke and container build.
 
 Session assurance remains base-only until a real MFA challenge verifier exists. The signed webhook ingress remains sandbox-only and disabled unless an explicit sandbox secret is configured. Real-money/crypto activation remains blocked by Gate C.
+
+
+## Integration record — Wave 6 (2026-09-18)
+
+Sixth autonomous parallel wave:
+
+- #162 trusted backend-only session step-up service
+- #163 dedicated DEMO game-detail experience
+- #164 read-only player Security Center in Operations
+- #165 signed sandbox webhook exactly-once PostgreSQL/ledger proof
+- #166 operational metrics alert evaluator
+- #167 Integration Wave V2 batch for #164 + #166
+- #172 Integration Wave V2 batch for #163 + #165
+
+The wave demonstrated the current integration policy:
+- UI/read-only/test/observability slices used Integration Wave V2 after isolated green CI,
+- the Identity security boundary stayed manual and was rebased onto the completed safe integrations before its final full CI gate.
+
+Session step-up remains backend-only. There is still no client or HTTP endpoint that can choose or raise assurance. The service requires an injected trusted verifier and cannot downgrade assurance.
+
+Payment exactly-once work is integration evidence only: it proves signed sandbox webhook replay produces one payment event, one ledger settlement and a green reconciliation result. It does not activate any real provider.
+
+Operational alert evaluation remains read-only and process-lifetime; it performs no paging, automatic restart or deployment promotion.
+
+Real-money/crypto activation remains fail-closed behind Gate C.
