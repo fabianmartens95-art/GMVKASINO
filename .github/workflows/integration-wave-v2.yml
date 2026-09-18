@@ -1,0 +1,44 @@
+name: Integration Wave V2
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+  pull_request_target:
+    types: [opened, edited, synchronize, reopened, ready_for_review, closed]
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  checks: read
+  contents: write
+  issues: write
+  pull-requests: write
+  statuses: read
+
+concurrency:
+  group: integration-wave-v2
+  cancel-in-progress: false
+
+jobs:
+  wave:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout trusted wave policy
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Validate wave policy syntax
+        run: node --check scripts/ci/integration-wave-v2.mjs
+
+      - name: Create or promote one integration wave
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          WAVE_CONFIG: .gmvkasino/integration-wave-v2.json
+        run: node scripts/ci/integration-wave-v2.mjs
