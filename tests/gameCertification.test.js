@@ -58,3 +58,24 @@ test('certification requires valid DEMO bet metadata', async () => {
   assert.equal(report.ok, false)
   assert.ok(report.failures.some((item) => item.code === 'ALLOWED_BETS_MISSING'))
 })
+
+
+test('catalog certification fails when registry contains an orphan adapter', async () => {
+  const registry = createDefaultGameRegistry()
+  registry.register({
+    id: 'orphan-game',
+    resolve() {
+      return { totalWin: 0 }
+    },
+  })
+
+  const report = await certifyGameCatalog({
+    games: GAMES,
+    registry,
+    samples: 2,
+  })
+  assert.equal(report.ok, false)
+  const orphan = report.results.find((result) => result.gameId === 'orphan-game')
+  assert.ok(orphan)
+  assert.equal(orphan.failures[0].code, 'ADAPTER_NOT_IN_CATALOG')
+})
