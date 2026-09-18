@@ -10,6 +10,10 @@ const CASES = [
   ['neon-fruits', 10],
   ['diamond-rush', 75],
   ['lucky-777', 100],
+  ['royal-sevens', 90],
+  ['diamond-heat', 125],
+  ['lucky-bells', 80],
+  ['fruit-fiesta', 75],
 ]
 
 function createService() {
