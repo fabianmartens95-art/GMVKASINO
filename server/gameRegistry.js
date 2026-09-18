@@ -1,4 +1,5 @@
 import { goldenVaultGameAdapter } from './gameAdapters/goldenVault.js'
+import { neonFruitsGameAdapter } from './gameAdapters/neonFruits.js'
 import { decimalToAtomic } from './amounts.js'
 
 export class GameAdapterContractError extends Error {
@@ -107,5 +108,5 @@ export class GameRegistry {
 }
 
 export function createDefaultGameRegistry() {
-  return new GameRegistry([goldenVaultGameAdapter])
+  return new GameRegistry([goldenVaultGameAdapter, neonFruitsGameAdapter])
 }
