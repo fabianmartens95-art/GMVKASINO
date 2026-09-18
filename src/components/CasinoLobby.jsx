@@ -1,7 +1,7 @@
 import { GAMES } from '../config/games.js'
 import { getGamePresentation } from '../game/clientGamePresentation.js'
 
-export default function CasinoLobby({ onPlay }) {
+export default function CasinoLobby({ onPlay, onDetails }) {
   const playableGames = GAMES.filter((game) => game.status === 'playable')
   const upcomingGames = GAMES.filter((game) => game.status !== 'playable')
   const featured = playableGames[0]
@@ -45,10 +45,9 @@ export default function CasinoLobby({ onPlay }) {
           {playableGames.map((game) => {
             const presentation = getGamePresentation(game.id)
             return (
-              <button
+              <article
                 className={`game-card playable-game game-card-${presentation.theme}`}
                 key={game.id}
-                onClick={() => onPlay(game.id)}
               >
                 <div className="game-art">
                   <span className="big-seven">{game.icon}</span>
@@ -61,7 +60,11 @@ export default function CasinoLobby({ onPlay }) {
                   </div>
                   <span className="play-circle">▶</span>
                 </div>
-              </button>
+                <div className="game-card-actions">
+                  <button type="button" onClick={() => onDetails(game.id)}>Details</button>
+                  <button type="button" className="primary-button" onClick={() => onPlay(game.id)}>Play</button>
+                </div>
+              </article>
             )
           })}
 
