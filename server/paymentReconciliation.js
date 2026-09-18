@@ -1,3 +1,5 @@
+import { validatePaymentEventSequence } from './paymentEventSequence.js'
+
 function atomic(value) {
   return BigInt(String(value ?? '0'))
 }
@@ -172,6 +174,21 @@ export class PaymentReconciler {
       events.get(row.payment_operation_id).set(row.event_type, Number(row.count))
     }
 
+    const eventHistoryResult = await this.pool.query(
+      `SELECT event_id, payment_operation_id, event_type, created_at
+       FROM payment_events
+       ORDER BY payment_operation_id, created_at, event_id`,
+    )
+    const eventHistory = new Map()
+    for (const row of eventHistoryResult.rows) {
+      if (!eventHistory.has(row.payment_operation_id)) eventHistory.set(row.payment_operation_id, [])
+      eventHistory.get(row.payment_operation_id).push({
+        eventId: row.event_id,
+        eventType: row.event_type,
+        createdAt: Number(row.created_at),
+      })
+    }
+
     const operationMismatches = []
     const transactionMismatches = []
     const eventMismatches = []
@@ -283,6 +300,13 @@ export class PaymentReconciler {
             actualCount: approvalCount,
           })
         }
+      }
+
+      for (const mismatch of validatePaymentEventSequence(operation, eventHistory.get(operation.id) || [])) {
+        eventMismatches.push({
+          paymentOperationId: operation.id,
+          ...mismatch,
+        })
       }
     }
 
