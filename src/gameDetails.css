@@ -1,0 +1,179 @@
+.game-details-shell {
+  min-height: 100%;
+  padding: 28px;
+}
+
+.game-details-panel {
+  width: min(1120px, 100%);
+  margin: 0 auto;
+  padding: 28px;
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 22px;
+  background: rgba(14,17,24,.96);
+}
+
+.game-details-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  align-items: flex-start;
+  margin-bottom: 26px;
+}
+
+.game-details-header h1 {
+  margin: 8px 0;
+  font-size: clamp(32px, 5vw, 58px);
+}
+
+.game-details-header p {
+  margin: 0;
+  color: #a7acb9;
+}
+
+.game-details-header button,
+.game-details-actions button,
+.game-card-actions button {
+  border: 1px solid rgba(255,255,255,.16);
+  border-radius: 10px;
+  padding: 10px 14px;
+  background: #10141d;
+  color: #f4f6fb;
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.game-details-kicker {
+  color: #c6cad6;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: .14em;
+}
+
+.game-details-grid {
+  display: grid;
+  grid-template-columns: minmax(280px, .8fr) minmax(0, 1.2fr);
+  gap: 28px;
+}
+
+.game-details-preview {
+  padding: 20px;
+  border: 1px solid rgba(255,255,255,.1);
+  border-radius: 18px;
+  background: #090c12;
+}
+
+.game-details-machine-title {
+  margin-bottom: 16px;
+  text-align: center;
+  font-weight: 900;
+  letter-spacing: .12em;
+}
+
+.game-details-reels {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.game-details-reels span {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 1;
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 10px;
+  background: #161b25;
+  font-size: clamp(26px, 5vw, 48px);
+  font-weight: 900;
+}
+
+.game-details-info {
+  display: grid;
+  gap: 20px;
+}
+
+.game-details-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0,1fr));
+  gap: 12px;
+}
+
+.game-details-stat-grid article {
+  display: grid;
+  gap: 6px;
+  padding: 16px;
+  border: 1px solid rgba(255,255,255,.1);
+  border-radius: 12px;
+  background: #0d1118;
+}
+
+.game-details-stat-grid span,
+.game-details-bets > span {
+  color: #969dab;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+}
+
+.game-details-bets {
+  display: grid;
+  gap: 10px;
+}
+
+.game-details-bets > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.game-details-bets strong {
+  min-width: 48px;
+  padding: 9px 12px;
+  border: 1px solid rgba(255,255,255,.1);
+  border-radius: 999px;
+  text-align: center;
+  background: #0d1118;
+}
+
+.game-details-notice {
+  display: grid;
+  gap: 6px;
+  padding: 16px;
+  border: 1px solid rgba(255,255,255,.1);
+  border-radius: 12px;
+  background: #0d1118;
+}
+
+.game-details-notice span {
+  color: #a7acb9;
+  line-height: 1.5;
+}
+
+.game-details-actions,
+.game-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.game-card-actions {
+  padding: 0 14px 14px;
+}
+
+.game-card-actions button {
+  flex: 1;
+}
+
+.game-card-actions .primary-button {
+  background: #f3f5fa;
+  color: #080a0f;
+}
+
+@media (max-width: 760px) {
+  .game-details-shell { padding: 14px; }
+  .game-details-panel { padding: 20px; border-radius: 16px; }
+  .game-details-grid { grid-template-columns: 1fr; }
+  .game-details-header { flex-direction: column; }
+  .game-details-stat-grid { grid-template-columns: 1fr; }
+}
