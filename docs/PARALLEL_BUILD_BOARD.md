@@ -4,7 +4,9 @@ Status: Binding delivery model
 Effective: 2026-09-18  
 Tracking issue: #69  
 Architecture standard: `docs/PRODUCTION_CORE_STANDARD.md`  
-Game parallelization extension: `docs/MULTI_GAME_PARALLEL_STANDARD.md`
+Game parallelization extension: `docs/MULTI_GAME_PARALLEL_STANDARD.md`  
+Product/delivery governance: `docs/PRODUCT_DELIVERY_OS.md`  
+Documentation sync gate: `docs/DOCUMENTATION_SYNC_GATE.md`
 
 ## Purpose
 
@@ -296,3 +298,14 @@ Payment exactly-once work is integration evidence only: it proves signed sandbox
 Operational alert evaluation remains read-only and process-lifetime; it performs no paging, automatic restart or deployment promotion.
 
 Real-money/crypto activation remains fail-closed behind Gate C.
+
+
+## Product governance layer
+
+The Parallel Build Board controls engineering concurrency. Product maturity is governed separately by `docs/PRODUCT_DELIVERY_OS.md`.
+
+Casino Product Waves use the `CPW` prefix so they are not confused with Integration Waves or game-family waves. The current default primary product gate is **CPW1 — Production Foundation & Security (#182)**.
+
+Passing a technical integration wave does not by itself advance a Casino Product Wave. Product-wave exit requires the wave-specific evidence defined in the Product & Delivery Operating System.
+
+Material roadmap, architecture, governance, security, release-gate and build-status changes must pass the Documentation Sync Gate.
