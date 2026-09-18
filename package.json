@@ -20,7 +20,8 @@
     "prod:revision:verify": "node scripts/verify-production-revision.mjs",
     "preview": "vite preview",
     "load:staging": "node scripts/load-harness.mjs",
-    "load:evaluate": "node scripts/evaluate-load-report.mjs"
+    "load:evaluate": "node scripts/evaluate-load-report.mjs",
+    "games:certify": "node scripts/certify-games.mjs"
   },
   "dependencies": {
     "pg": "8.23.0",
