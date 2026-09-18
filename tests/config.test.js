@@ -13,6 +13,7 @@ test('server config uses safe defaults for an empty environment', () => {
   assert.equal(config.sessionStorePath, '.data/demo-sessions.json')
   assert.equal(config.databaseUrl, '')
   assert.equal(config.databaseSsl, false)
+  assert.equal(config.sandboxPaymentWebhookSecret, '')
 })
 
 test('server config accepts deployment runtime values', () => {
@@ -29,6 +30,7 @@ test('server config accepts deployment runtime values', () => {
     SPIN_RATE_LIMIT_MAX: '10',
     MAX_JSON_BODY_BYTES: '8192',
     AUDIT_MAX_EVENTS: '500',
+    SANDBOX_PAYMENT_WEBHOOK_SECRET: 'sandbox-webhook-secret-that-is-at-least-32-bytes',
   })
 
   assert.equal(config.port, 12345)
@@ -37,6 +39,7 @@ test('server config accepts deployment runtime values', () => {
   assert.equal(config.sessionAbsoluteTtlMs, 3600000)
   assert.equal(config.sessionStorePath, '/data/demo-sessions.json')
   assert.equal(config.databaseSsl, true)
+  assert.equal(config.sandboxPaymentWebhookSecret, 'sandbox-webhook-secret-that-is-at-least-32-bytes')
 })
 
 test('legacy DEMO_SESSION_TTL_MS remains an idle-TTL fallback', () => {
@@ -50,4 +53,8 @@ test('server config fails fast on invalid deployment settings', () => {
   assert.throws(() => loadServerConfig({ SPIN_RATE_LIMIT_MAX: '1.5' }), /Invalid SPIN_RATE_LIMIT_MAX/)
   assert.throws(() => loadServerConfig({ DEMO_SESSION_ABSOLUTE_TTL_MS: '0' }), /Invalid DEMO_SESSION_ABSOLUTE_TTL_MS/)
   assert.throws(() => loadServerConfig({ DATABASE_SSL: 'sometimes' }), /Invalid DATABASE_SSL/)
+  assert.throws(
+    () => loadServerConfig({ SANDBOX_PAYMENT_WEBHOOK_SECRET: 'too-short' }),
+    /Invalid SANDBOX_PAYMENT_WEBHOOK_SECRET/,
+  )
 })
