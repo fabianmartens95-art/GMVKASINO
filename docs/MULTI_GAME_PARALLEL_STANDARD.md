@@ -155,3 +155,33 @@ GAME_CERTIFICATION_SAMPLES=250 npm run games:certify
 This step is part of the required `test-and-build` job. Registry/catalog mismatches, adapter contract failures, invalid DEMO payout precision, non-finite or negative payouts, and exposure of reserved server-authoritative result fields fail the normal merge gate.
 
 Certification is read-only. It never changes a game status and never promotes a deployment.
+
+
+## Classic Slot Template V1
+
+Tracking: #151
+
+The current classic 3x3 / 5-payline family is standardized on `src/game/classicSlotEngine.js`.
+
+The shared template owns only reusable game mechanics:
+
+- weighted symbol selection
+- configured row/reel grid generation
+- payline matching
+- cent-exact payout aggregation
+- presentation projection of non-authoritative symbol data
+
+Each game remains responsible for its own immutable symbol table, weights, multipliers, presentation and adapter id. The template does not own wallet state, account state, round ids, settlement, idempotency, ledger entries, payments or authorization.
+
+Migration family:
+
+- Golden Vault
+- Neon Fruits
+- Diamond Rush
+- Lucky 777
+
+Existing game-specific exported engine functions remain compatibility wrappers over the shared template. Golden Vault intentionally preserves its established result projection while consuming the same shared mechanics.
+
+Future classic games should be implemented as isolated configuration/wrapper modules on this template. A new game must not copy the weighted-grid/payline engine. If a requested mechanic cannot be represented by the template without changing shared behavior, the extension is a serialized `stream/game-platform-*` change and must be merged before dependent game branches proceed.
+
+Feature-slot mechanics such as free spins, sticky/expanding wilds, cascades, cluster pays, Hold & Win or jackpot state are not added ad hoc to this classic template. They require an explicit game-family/platform extension so the classic family remains stable and certification-friendly.
