@@ -203,3 +203,18 @@ First autonomous parallel wave:
 - #82 Synthetic load/concurrency harness
 
 Each stream passed its isolated PR CI gate before merge. This integration record PR exists to run the complete CI/reconciliation/recovery/build/smoke pipeline once more against the combined `main` state.
+
+
+## Integration record — Wave 2 (2026-09-18)
+
+Second autonomous parallel wave:
+
+- #94 Neon Fruits isolated DEMO game module
+- #95 Capability-aware Staff Operations workspace
+- #96 Step-up authentication policy foundation
+- #97 Payment event-history reconciliation
+- #98 Load baseline threshold evaluator
+
+All feature streams passed isolated PR CI before merge. This integration record PR runs the complete CI/reconciliation/recovery/build/smoke pipeline against the combined `main` state.
+
+Neon Fruits remains `coming-soon` and DEMO-only. Step-up policy is a foundation only; no MFA/verification bypass or false production-readiness claim is introduced. Real-money/crypto activation remains blocked by Gate C.
