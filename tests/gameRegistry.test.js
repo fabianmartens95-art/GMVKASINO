@@ -23,7 +23,16 @@ test('default registry resolves Golden Vault through the shared adapter contract
 
 test('default registry contains all certified game adapters behind one shared contract', () => {
   const registry = createDefaultGameRegistry()
-  for (const gameId of ['golden-vault', 'neon-fruits', 'diamond-rush', 'lucky-777']) {
+  for (const gameId of [
+    'golden-vault',
+    'neon-fruits',
+    'diamond-rush',
+    'lucky-777',
+    'royal-sevens',
+    'diamond-heat',
+    'lucky-bells',
+    'fruit-fiesta',
+  ]) {
     assert.equal(registry.has(gameId), true)
   }
 })

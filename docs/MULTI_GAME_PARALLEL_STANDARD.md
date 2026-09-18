@@ -185,3 +185,30 @@ Existing game-specific exported engine functions remain compatibility wrappers o
 Future classic games should be implemented as isolated configuration/wrapper modules on this template. A new game must not copy the weighted-grid/payline engine. If a requested mechanic cannot be represented by the template without changing shared behavior, the extension is a serialized `stream/game-platform-*` change and must be merged before dependent game branches proceed.
 
 Feature-slot mechanics such as free spins, sticky/expanding wilds, cascades, cluster pays, Hold & Win or jackpot state are not added ad hoc to this classic template. They require an explicit game-family/platform extension so the classic family remains stable and certification-friendly.
+
+
+## Classic Slot Wave W1
+
+Tracking: #158, #159, #160, #161 and activation #178
+
+Wave W1 validates the production pattern created by Classic Slot Template V1. The four isolated game modules are:
+
+- Royal Sevens
+- Diamond Heat
+- Lucky Bells
+- Fruit Fiesta
+
+They were built as independent game branches and integrated in two Wave V2 batches before the serialized shared-platform registration step.
+
+After activation, the Classic Slot family contains eight DEMO-playable titles behind one shared Game Registry and one authoritative settlement boundary:
+
+- Golden Vault
+- Neon Fruits
+- Diamond Rush
+- Lucky 777
+- Royal Sevens
+- Diamond Heat
+- Lucky Bells
+- Fruit Fiesta
+
+Adding a classic title must continue to reuse the shared template rather than duplicate weighted-symbol, grid or payline mechanics. Catalog status remains independent from implementation and may only become `playable` after the applicable CI and Game Certification Gate is green.
