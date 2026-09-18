@@ -167,3 +167,51 @@ integrationTest('payment reconciliation detects reserved-balance drift and expos
     await pool.end()
   }
 })
+
+
+integrationTest('payment reconciliation detects impossible event ordering without exposing account details', async () => {
+  const { pool, session, service, reconciler } = await fixture()
+  let injectedEventId = ''
+  try {
+    const withdrawal = await service.createOperation({
+      accountId: session.accountId,
+      kind: 'withdrawal',
+      amount: '25.00',
+      idempotencyKey: `sequence-corruption-${session.accountId}`,
+    })
+    await service.transition({
+      operationId: withdrawal.id,
+      action: 'approve',
+      eventId: `sequence-approve-${withdrawal.id}`,
+      actorAccountId: session.accountId,
+    })
+
+    injectedEventId = `sequence-corrupt-complete-${withdrawal.id}`
+    await pool.query(
+      `INSERT INTO payment_events (
+         event_id, payment_operation_id, event_type, request_id, actor_account_id, created_at, metadata
+       ) VALUES ($1, $2, 'complete', NULL, $3, 0, '{}'::jsonb)`,
+      [injectedEventId, withdrawal.id, session.accountId],
+    )
+
+    const report = await reconciler.reconcile()
+    assert.equal(report.ok, false)
+    assert.ok(report.eventMismatches.some((item) => (
+      item.paymentOperationId === withdrawal.id && item.code === 'event_sequence_mismatch'
+    )))
+
+    const summary = await reconciler.sanitizedSummary()
+    assert.equal(summary.ok, false)
+    assert.ok(summary.mismatchCategories.events >= 1)
+    assert.equal(JSON.stringify(summary).includes(session.accountId), false)
+
+    await pool.query('DELETE FROM payment_events WHERE event_id = $1', [injectedEventId])
+    injectedEventId = ''
+    assert.equal((await reconciler.reconcile()).ok, true)
+  } finally {
+    if (injectedEventId) {
+      await pool.query('DELETE FROM payment_events WHERE event_id = $1', [injectedEventId]).catch(() => {})
+    }
+    await pool.end()
+  }
+})
