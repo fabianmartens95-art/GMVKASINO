@@ -6,3 +6,14 @@ dist
 !.env.example
 .DS_Store
 *.log
+
+# Local credentials, key material and database exports
+.envrc
+.direnv/
+.npmrc
+*.pem
+*.key
+*.p12
+*.pfx
+*.dump
+*.backup

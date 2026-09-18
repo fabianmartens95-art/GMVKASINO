@@ -1,0 +1,13 @@
+# Default owner until GMVKASINO is moved into a company GitHub organization.
+* @fabianmartens95-art
+
+# Security-, money- and production-sensitive surfaces.
+/.github/ @fabianmartens95-art
+/.env.example @fabianmartens95-art
+/server/ @fabianmartens95-art
+/scripts/ @fabianmartens95-art
+/config/ @fabianmartens95-art
+/Dockerfile @fabianmartens95-art
+/compose.yaml @fabianmartens95-art
+/package.json @fabianmartens95-art
+/package-lock.json @fabianmartens95-art
