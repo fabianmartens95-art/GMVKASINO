@@ -35,6 +35,42 @@ const GAME_PRESENTATIONS = Object.freeze({
       'BAR', '🍋', '7',
     ]),
   }),
+  'royal-sevens': Object.freeze({
+    theme: 'vault',
+    subtitle: 'Royal seven-line classic slot',
+    preview: Object.freeze([
+      '7', '♛', '◆',
+      'BAR', '7', '🍒',
+      '◆', '🍋', '7',
+    ]),
+  }),
+  'diamond-heat': Object.freeze({
+    theme: 'diamond',
+    subtitle: 'Diamond-and-flame classic slot',
+    preview: Object.freeze([
+      '💎', '🔥', '♛',
+      '♦', '💎', 'BAR',
+      '🔥', '●', '💎',
+    ]),
+  }),
+  'lucky-bells': Object.freeze({
+    theme: 'lucky',
+    subtitle: 'Bell-and-luck classic slot',
+    preview: Object.freeze([
+      '🔔', '♧', '☘',
+      '🍒', '🔔', 'BAR',
+      '☘', '🍋', '🔔',
+    ]),
+  }),
+  'fruit-fiesta': Object.freeze({
+    theme: 'neon',
+    subtitle: 'Colorful fruit-line classic slot',
+    preview: Object.freeze([
+      '★', '🍍', '🍉',
+      '🍇', '🍓', '🍊',
+      '🍍', '★', '🍉',
+    ]),
+  }),
 })
 
 export function getGamePresentation(gameId) {
