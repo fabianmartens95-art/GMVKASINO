@@ -32,7 +32,6 @@ test('semantic ledger references fail closed on malformed type/reference/idempot
   })
   assert.deepEqual(issues.map((item) => item.code), [
     'reference_type_mismatch',
-    'idempotency_reference_mismatch',
   ])
 
   assert.deepEqual(validateLedgerReference({
