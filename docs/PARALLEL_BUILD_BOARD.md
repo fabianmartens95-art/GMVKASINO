@@ -218,3 +218,20 @@ Second autonomous parallel wave:
 All feature streams passed isolated PR CI before merge. This integration record PR runs the complete CI/reconciliation/recovery/build/smoke pipeline against the combined `main` state.
 
 Neon Fruits remains `coming-soon` and DEMO-only. Step-up policy is a foundation only; no MFA/verification bypass or false production-readiness claim is introduced. Real-money/crypto activation remains blocked by Gate C.
+
+
+## Integration record — Wave 3 (2026-09-18)
+
+Third autonomous parallel wave and concurrent Game Core substreams:
+
+- #104 Diamond Rush isolated DEMO game
+- #105 Lucky 777 isolated DEMO game
+- #106 serialized shared Game Registry/catalog integration
+- #107 authenticated DEMO transaction history
+- #108 sanitized staff player directory
+- #109 single-use account recovery token foundation
+- #110 signed provider webhook envelope verifier
+
+All merged feature streams passed isolated PR CI before integration. This integration record PR runs the complete test/reconciliation/recovery/build/smoke pipeline against the combined current `main`.
+
+Diamond Rush and Lucky 777 remain `coming-soon` and DEMO-only. Account recovery still has no public reset endpoint. Webhook verification authenticates raw provider input only and does not mutate payment or ledger state. Real-money/crypto activation remains blocked by Gate C.
