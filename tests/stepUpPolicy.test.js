@@ -44,11 +44,20 @@ test('privileged financial/risk mutations require verified email plus MFA', () =
   assert.equal(partial.satisfied, false)
   assert.deepEqual(partial.missing, ['mfa'])
 
-  const complete = evaluateStepUpRequirement(
+  const enrolledOnly = evaluateStepUpRequirement(
     { emailVerified: true, mfaEnrolled: true },
     'payments.sandbox.manage',
   )
+  assert.equal(enrolledOnly.satisfied, false)
+  assert.deepEqual(enrolledOnly.missing, ['session_mfa'])
+
+  const complete = evaluateStepUpRequirement(
+    { emailVerified: true, mfaEnrolled: true },
+    'payments.sandbox.manage',
+    { sessionAssurance: { level: 'mfa', verifiedAt: 1234 } },
+  )
   assert.equal(complete.satisfied, true)
+  assert.deepEqual(complete.missing, [])
 })
 
 test('unknown capabilities fail closed to strongest assurance', () => {
