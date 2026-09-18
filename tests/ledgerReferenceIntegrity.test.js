@@ -10,6 +10,12 @@ test('semantic ledger references accept current authoritative transaction patter
     idempotency_key: 'spin:spin-1',
   }), [])
   assert.deepEqual(validateLedgerReference({
+    type: 'INITIAL_CREDIT',
+    reference_type: 'demo_session',
+    reference_id: 'legacy-session-1',
+    idempotency_key: 'bootstrap:legacy-session-1',
+  }), [])
+  assert.deepEqual(validateLedgerReference({
     type: 'SANDBOX_WITHDRAWAL_RESERVE',
     reference_type: 'payment_operation',
     reference_id: 'payment-1',
