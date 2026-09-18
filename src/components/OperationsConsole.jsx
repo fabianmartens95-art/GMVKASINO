@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
+  getAuditEvidence,
   getOperationsOverview,
+  getReconciliationEvidence,
   getSandboxPaymentQueue,
   loginOperations,
   logoutOperations,
@@ -46,7 +48,9 @@ function paymentActions(operation) {
 
 function formatDate(value) {
   const number = Number(value)
-  return Number.isFinite(number) ? new Date(number).toLocaleString() : '—'
+  if (Number.isFinite(number)) return new Date(number).toLocaleString()
+  const parsed = Date.parse(value)
+  return Number.isFinite(parsed) ? new Date(parsed).toLocaleString() : '—'
 }
 
 export default function OperationsConsole({ onExit }) {
@@ -59,6 +63,9 @@ export default function OperationsConsole({ onExit }) {
   const [queueAccess, setQueueAccess] = useState('checking')
   const [queueError, setQueueError] = useState('')
   const [transitioningId, setTransitioningId] = useState('')
+  const [auditEvents, setAuditEvents] = useState([])
+  const [evidenceReconciliation, setEvidenceReconciliation] = useState(null)
+  const [evidenceError, setEvidenceError] = useState('')
 
   const requestTotals = useMemo(() => aggregateRequests(overview?.metrics), [overview])
   const payments = overview?.payments || null
@@ -85,13 +92,51 @@ export default function OperationsConsole({ onExit }) {
     }
   }
 
+  async function refreshEvidence(currentOverview = overview) {
+    setEvidenceError('')
+    const tasks = []
+
+    if (hasCapability(currentOverview, 'audit.read')) {
+      tasks.push(
+        getAuditEvidence()
+          .then(setAuditEvents)
+          .catch((requestError) => {
+            setAuditEvents([])
+            if (requestError.status === 401) throw requestError
+            setEvidenceError(requestError.message || 'Audit evidence could not be loaded.')
+          }),
+      )
+    } else {
+      setAuditEvents([])
+    }
+
+    if (hasCapability(currentOverview, 'reconciliation.read')) {
+      tasks.push(
+        getReconciliationEvidence()
+          .then(setEvidenceReconciliation)
+          .catch((requestError) => {
+            setEvidenceReconciliation(null)
+            if (requestError.status === 401) throw requestError
+            setEvidenceError(requestError.message || 'Reconciliation evidence could not be loaded.')
+          }),
+      )
+    } else {
+      setEvidenceReconciliation(null)
+    }
+
+    await Promise.all(tasks)
+  }
+
   async function refresh() {
     setError('')
     try {
       const next = await getOperationsOverview()
       setOverview(next)
       setState('ready')
-      await refreshFinanceQueue(next)
+      await Promise.all([
+        refreshFinanceQueue(next),
+        refreshEvidence(next),
+      ])
     } catch (requestError) {
       setOverview(null)
       setQueue([])
@@ -119,7 +164,10 @@ export default function OperationsConsole({ onExit }) {
       setOverview(result.overview)
       setPassword('')
       setState('ready')
-      await refreshFinanceQueue(result.overview)
+      await Promise.all([
+        refreshFinanceQueue(result.overview),
+        refreshEvidence(result.overview),
+      ])
     } catch (loginError) {
       setPassword('')
       if (loginError.status === 403) {
@@ -155,6 +203,9 @@ export default function OperationsConsole({ onExit }) {
     setOverview(null)
     setQueue([])
     setQueueAccess('checking')
+    setAuditEvents([])
+    setEvidenceReconciliation(null)
+    setEvidenceError('')
     setPassword('')
     setState('login')
     setError('')
@@ -282,6 +333,78 @@ export default function OperationsConsole({ onExit }) {
             <small>{Number(payments?.mismatchCount || 0)} mismatches · read-only check</small>
           </article>
         </div>
+
+        {evidenceError && <div className="ops-error">{evidenceError}</div>}
+
+        {hasCapability(overview, 'reconciliation.read') && evidenceReconciliation && (
+          <section className="ops-table-section">
+            <div className="ops-section-heading">
+              <h2>Reconciliation Evidence</h2>
+              <span>{formatDate(evidenceReconciliation.checkedAt)} · read-only</span>
+            </div>
+            <div className="ops-table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Domain</th>
+                    <th>Status</th>
+                    <th>Checked</th>
+                    <th>Mismatches</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>Ledger</td>
+                    <td>{evidenceReconciliation.ledger?.ok ? 'HEALTHY' : 'ANOMALY'}</td>
+                    <td>{Number(evidenceReconciliation.ledger?.transactionsChecked || 0)} tx</td>
+                    <td>{Number(evidenceReconciliation.ledger?.mismatchCount || 0)}</td>
+                  </tr>
+                  <tr>
+                    <td>Payments</td>
+                    <td>{evidenceReconciliation.payments?.ok ? 'HEALTHY' : evidenceReconciliation.payments ? 'ANOMALY' : 'N/A'}</td>
+                    <td>{Number(evidenceReconciliation.payments?.operationsChecked || 0)} ops</td>
+                    <td>{Number(evidenceReconciliation.payments?.mismatchCount || 0)}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )}
+
+        {hasCapability(overview, 'audit.read') && (
+          <section className="ops-table-section">
+            <div className="ops-section-heading">
+              <h2>Recent Audit Evidence</h2>
+              <span>{auditEvents.length} sanitized events</span>
+            </div>
+            <div className="ops-table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Occurred</th>
+                    <th>Event</th>
+                    <th>Request ID</th>
+                    <th>Account context</th>
+                    <th>Session context</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {auditEvents.length === 0 ? (
+                    <tr><td colSpan="5">No audit events available.</td></tr>
+                  ) : auditEvents.map((event, index) => (
+                    <tr key={`${event.occurredAt}-${event.eventType}-${index}`}>
+                      <td>{formatDate(event.occurredAt)}</td>
+                      <td>{event.eventType}</td>
+                      <td>{event.requestId || '—'}</td>
+                      <td>{event.hasAccount ? 'yes' : 'no'}</td>
+                      <td>{event.hasSession ? 'yes' : 'no'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )}
 
         {queueAccess === 'allowed' && (
           <section className="ops-table-section">
