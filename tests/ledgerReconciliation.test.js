@@ -88,3 +88,58 @@ integrationTest('ledger reconciliation detects cached wallet drift and reports t
     await pool.end()
   }
 })
+
+
+integrationTest('ledger reconciliation detects duplicate and malformed authoritative semantic references', async () => {
+  const pool = new Pool({ connectionString: databaseUrl })
+  let corruptTransactionId = null
+
+  try {
+    await runMigrations({ pool })
+    const store = new PostgresSessionStore({ pool, startingBalance: 1000 })
+    await store.init()
+    const session = await store.create({ player: 'Reference Integrity QA' })
+    const spinId = `reference-integrity-${session.id}`
+
+    await store.applySpin(session.id, {
+      bet: 5,
+      payout: 5,
+      spinId,
+      gameId: 'golden-vault',
+    })
+
+    corruptTransactionId = `corrupt-reference-${session.id}`
+    await pool.query('BEGIN')
+    await pool.query(
+      `INSERT INTO ledger_transactions (
+         id, asset_code, type, reference_type, reference_id, idempotency_key, metadata, created_at
+       ) VALUES ($1, 'DEMO', 'GAME_SETTLEMENT', 'spin', $2, $3, '{}'::jsonb, 1)`,
+      [corruptTransactionId, spinId, `corrupt:${spinId}`],
+    )
+    await pool.query(
+      `INSERT INTO ledger_entries (transaction_id, ledger_account_id, amount_atomic, created_at)
+       VALUES
+         ($1, 'sys_demo_house', 1, 1),
+         ($1, 'sys_demo_house', -1, 1)`,
+      [corruptTransactionId],
+    )
+    await pool.query('COMMIT')
+
+    const report = await new LedgerReconciler({ pool }).reconcile({ assetCode: 'DEMO' })
+    assert.equal(report.ok, false)
+    assert.ok(report.referenceDuplicates.some((item) => (
+      item.type === 'GAME_SETTLEMENT'
+      && item.referenceId === spinId
+      && item.transactionCount === 2
+    )))
+    assert.ok(report.referenceMismatches.some((item) => (
+      item.transactionId === corruptTransactionId
+      && item.code === 'idempotency_reference_mismatch'
+    )))
+  } finally {
+    if (corruptTransactionId) {
+      await pool.query('DELETE FROM ledger_transactions WHERE id = $1', [corruptTransactionId]).catch(() => {})
+    }
+    await pool.end()
+  }
+})
