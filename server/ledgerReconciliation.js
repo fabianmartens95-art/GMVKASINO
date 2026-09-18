@@ -105,8 +105,9 @@ export class LedgerReconciler {
       `SELECT id, type, reference_type, reference_id, idempotency_key
        FROM ledger_transactions
        WHERE type = ANY($1::text[])
+         AND ($2::text IS NULL OR asset_code = $2)
        ORDER BY type, reference_id, id`,
-      [referenceTypes],
+      [referenceTypes, normalizedAsset],
     )
 
     const referenceMismatches = []
@@ -125,11 +126,12 @@ export class LedgerReconciler {
       `SELECT type, reference_type, reference_id, COUNT(*)::int AS transaction_count
        FROM ledger_transactions
        WHERE type = ANY($1::text[])
+         AND ($2::text IS NULL OR asset_code = $2)
          AND reference_id IS NOT NULL
        GROUP BY type, reference_type, reference_id
        HAVING COUNT(*) > 1
        ORDER BY type, reference_id`,
-      [referenceTypes],
+      [referenceTypes, normalizedAsset],
     )
     const referenceDuplicates = duplicateReferencesResult.rows.map((row) => ({
       type: row.type,
