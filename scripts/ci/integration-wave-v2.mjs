@@ -97,12 +97,12 @@ async function requiredCheckReady(sha) {
   return { ok:true, state:"success", reason:`required check '${config.requiredCheck}' is green` };
 }
 
-function verificationBranchName(wave) {
-  return `integration/verify-wave-v2-${wave.number}`;
+function verificationBranchName(wave, kind) {
+  return `integration/verify-${kind}-wave-v2-${wave.number}`;
 }
 
-async function dispatchVerificationCi(wave, verificationSha) {
-  const branch = verificationBranchName(wave);
+async function dispatchVerificationCi(wave, verificationSha, kind) {
+  const branch = verificationBranchName(wave, kind);
   const create = await github("/git/refs", {
     method:"POST",
     headers:{ "Content-Type":"application/json" },
@@ -110,7 +110,7 @@ async function dispatchVerificationCi(wave, verificationSha) {
   });
 
   if (!create.ok && create.status !== 422) {
-    throw new Error(`verification branch creation failed with ${create.status}`);
+    throw new Error(`${kind} verification branch creation failed with ${create.status}`);
   }
 
   if (!create.ok && create.status === 422) {
@@ -119,7 +119,7 @@ async function dispatchVerificationCi(wave, verificationSha) {
       headers:{ "Content-Type":"application/json" },
       body:JSON.stringify({ sha:verificationSha, force:true }),
     });
-    if (!update.ok) throw new Error(`verification branch update failed with ${update.status}`);
+    if (!update.ok) throw new Error(`${kind} verification branch update failed with ${update.status}`);
   }
 
   const dispatched = await github("/actions/workflows/ci.yml/dispatches", {
@@ -127,9 +127,30 @@ async function dispatchVerificationCi(wave, verificationSha) {
     headers:{ "Content-Type":"application/json" },
     body:JSON.stringify({ ref:branch }),
   });
-  if (!dispatched.ok) throw new Error(`verification CI dispatch failed with ${dispatched.status}`);
+  if (!dispatched.ok) throw new Error(`${kind} verification CI dispatch failed with ${dispatched.status}`);
 
-  summary(`Wave: dispatched combined CI for #${wave.number} on GitHub merge commit ${verificationSha}.`);
+  summary(`Wave: dispatched ${kind} CI for #${wave.number} on ${verificationSha}.`);
+}
+
+async function awaitRequiredCheck(sha, label) {
+  const maxAttempts = 120;
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    const check = await requiredCheckReady(sha);
+    if (check.ok) {
+      summary(`Wave: ${label} required check is green on ${sha}.`);
+      return true;
+    }
+    if (check.state === "failed") {
+      summary(`Wave: ${label} verification failed — ${check.reason}.`);
+      return false;
+    }
+    if (attempt === maxAttempts - 1) {
+      summary(`Wave: ${label} verification timed out waiting for ${config.requiredCheck}.`);
+      return false;
+    }
+    await sleep(5000);
+  }
+  return false;
 }
 
 async function reviewsReady(number) {
@@ -230,7 +251,8 @@ async function invalidateWave(wave, reason) {
     body:JSON.stringify({ state:"closed" }),
   });
   await deleteBranch(wave.head.ref);
-  await deleteBranch(verificationBranchName(wave));
+  await deleteBranch(verificationBranchName(wave, "head"));
+  await deleteBranch(verificationBranchName(wave, "merge"));
   summary(`Wave: invalidated #${wave.number} — ${reason}.`);
 }
 
@@ -291,25 +313,44 @@ async function promoteWave(wave) {
     return;
   }
 
-  const verificationSha = currentWave.merge_commit_sha;
-  if (!verificationSha) {
-    summary(`Wave: #${currentWave.number} has no GitHub merge commit yet; waiting.`);
+  const headVerificationSha = currentWave.head?.sha;
+  const mergeVerificationSha = currentWave.merge_commit_sha;
+  if (!headVerificationSha || !mergeVerificationSha) {
+    summary(`Wave: #${currentWave.number} is missing head or GitHub merge commit; waiting.`);
     return;
   }
 
-  const verification = await requiredCheckReady(verificationSha);
-  if (!verification.ok) {
-    if (verification.state === "missing") {
-      await dispatchVerificationCi(currentWave, verificationSha);
-      return;
-    }
-    summary(`Wave: #${currentWave.number} waiting — ${verification.reason} on merge commit ${verificationSha}.`);
+  const headBefore = await requiredCheckReady(headVerificationSha);
+  const mergeBefore = await requiredCheckReady(mergeVerificationSha);
+
+  if (headBefore.state === "failed") {
+    summary(`Wave: #${currentWave.number} head verification failed — ${headBefore.reason}.`);
     return;
   }
+  if (mergeBefore.state === "failed") {
+    summary(`Wave: #${currentWave.number} merge verification failed — ${mergeBefore.reason}.`);
+    return;
+  }
+
+  if (headBefore.state === "missing") {
+    await dispatchVerificationCi(currentWave, headVerificationSha, "head");
+  }
+  if (mergeBefore.state === "missing") {
+    await dispatchVerificationCi(currentWave, mergeVerificationSha, "merge");
+  }
+
+  const [headGreen, mergeGreen] = await Promise.all([
+    headBefore.ok ? Promise.resolve(true) : awaitRequiredCheck(headVerificationSha, "head"),
+    mergeBefore.ok ? Promise.resolve(true) : awaitRequiredCheck(mergeVerificationSha, "merge"),
+  ]);
+  if (!headGreen || !mergeGreen) return;
 
   const refreshed = await freshPull(currentWave.number);
-  if (refreshed.head?.sha !== currentWave.head?.sha || refreshed.merge_commit_sha !== verificationSha) {
-    summary(`Wave: #${currentWave.number} merge commit changed during verification; fresh CI required.`);
+  if (
+    refreshed.head?.sha !== headVerificationSha ||
+    refreshed.merge_commit_sha !== mergeVerificationSha
+  ) {
+    summary(`Wave: #${currentWave.number} head/base changed during verification; fresh dual CI required.`);
     return;
   }
   currentWave = refreshed;
@@ -346,8 +387,9 @@ async function promoteWave(wave) {
   }
 
   await deleteBranch(currentWave.head.ref);
-  await deleteBranch(verificationBranchName(currentWave));
-  summary(`Wave: promoted #${currentWave.number} with ${metadata.sources.length} source PRs at ${merged.data.sha} after exact merge-commit CI.`);
+  await deleteBranch(verificationBranchName(currentWave, "head"));
+  await deleteBranch(verificationBranchName(currentWave, "merge"));
+  summary(`Wave: promoted #${currentWave.number} with ${metadata.sources.length} source PRs at ${merged.data.sha} after dual head + merge verification.`);
 }
 
 async function buildWave() {
