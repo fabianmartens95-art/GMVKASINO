@@ -4,6 +4,17 @@
   var SESSION_KEY='gmvkasino.demo.sessionId';
   var AUTH_KEY='gmvkasino.auth.token';
   var bets=[1,2,5,10,25];
+  var currentGameId='golden-vault';
+  var gameCatalog={
+    'golden-vault':{title:'Golden Vault',bets:[1,2,5,10,25],preview:['7','◆','BAR','🍒','7','🔔','BAR','🍋','7']},
+    'neon-fruits':{title:'Neon Fruits',bets:[1,2,5,10,20],preview:['🍓','🍋','🍇','🍉','7','🍓','🍇','🍋','🍉']},
+    'diamond-rush':{title:'Diamond Rush',bets:[1,2,5,10,20],preview:['💎','♛','♦','●','💎','BAR','♦','◉','💎']},
+    'lucky-777':{title:'Lucky 777',bets:[1,2,5,10,20],preview:['7','BAR','🔔','🍒','7','♧','BAR','🍋','7']},
+    'royal-sevens':{title:'Royal Sevens',bets:[1,2,5,10,20],preview:['7','♛','◆','BAR','7','🍒','◆','🍋','7']},
+    'diamond-heat':{title:'Diamond Heat',bets:[1,2,5,10,20],preview:['💎','🔥','♛','♦','💎','BAR','🔥','●','💎']},
+    'lucky-bells':{title:'Lucky Bells',bets:[1,2,5,10,20],preview:['🔔','♧','☘','🍒','🔔','BAR','☘','🍋','🔔']},
+    'fruit-fiesta':{title:'Fruit Fiesta',bets:[1,2,5,10,20],preview:['★','🍍','🍉','🍇','🍓','🍊','🍍','★','🍉']}
+  };
   var betIndex=2;
   var spinning=false;
   var balance=1000;
@@ -97,13 +108,36 @@
     }}
   }
 
+  function selectGame(gameId){
+    var game=gameCatalog[gameId];
+    if(!game){return;}
+    currentGameId=gameId;
+    bets=game.bets.slice();
+    betIndex=Math.min(2,bets.length-1);
+    el('gameTitle').textContent=game.title;
+    el('machineGameTitle').textContent=game.title.toUpperCase();
+    var grid=[];
+    for(var r=0;r<3;r++){
+      var row=[];
+      for(var c=0;c<3;c++){
+        row.push({id:'preview-'+r+'-'+c,label:game.preview[(r*3)+c]});
+      }
+      grid.push(row);
+    }
+    renderGrid(grid);
+    el('lastWin').textContent='0.00';
+    el('message').textContent='Bereit — Einsatz wählen und SPIN drücken';
+    updateSpinControls();
+    showView('game');
+  }
+
   function spin(){
     if(spinning||!sessionId){return;}
     var bet=bets[betIndex];
     if(balance<bet){toast('Nicht genug DEMO Credits',true);return;}
     spinning=true;el('reels').classList.add('spinning');el('message').textContent='Server löst Spin auf…';updateSpinControls();
     var idem=key('showcase-spin');
-    function perform(){return request('/spin',{method:'POST',body:{gameId:'golden-vault',bet:bet,idempotencyKey:idem}});}
+    function perform(){return request('/spin',{method:'POST',body:{gameId:currentGameId,bet:bet,idempotencyKey:idem}});}
     perform().catch(function(error){
       if(error.status===401){setSession('');return openSession().then(perform);}
       throw error;
@@ -195,9 +229,12 @@
 
   var navButtons=document.querySelectorAll('.js-nav');
   for(var i=0;i<navButtons.length;i++){navButtons[i].addEventListener('click',function(){showView(this.getAttribute('data-view'));});}
-  el('heroPlay').addEventListener('click',function(){showView('game');});
-  el('heroMachine').addEventListener('click',function(){showView('game');});
-  el('gameGoldenVault').addEventListener('click',function(){showView('game');});
+  el('heroPlay').addEventListener('click',function(){selectGame('golden-vault');});
+  el('heroMachine').addEventListener('click',function(){selectGame('golden-vault');});
+  var gameButtons=document.querySelectorAll('.game-play');
+  for(var g=0;g<gameButtons.length;g++){
+    gameButtons[g].addEventListener('click',function(){selectGame(this.getAttribute('data-game-id'));});
+  }
   el('betDown').addEventListener('click',function(){if(betIndex>0&&!spinning){betIndex--;updateSpinControls();}});
   el('betUp').addEventListener('click',function(){if(betIndex<bets.length-1&&!spinning){betIndex++;updateSpinControls();}});
   el('spin').addEventListener('click',spin);
